@@ -1,0 +1,25 @@
+# Runtime data (SQLite comment store)
+/data/
+*.db
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*-shm
+*-wal
+
+# Built binary
+/margin
+/dist/
+/bin/
+
+# Go
+*.test
+*.out
+coverage.*
+vendor/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
