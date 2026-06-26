@@ -90,8 +90,47 @@ func (s *Store) migrate(ctx context.Context) error {
 			return fmt.Errorf("migrate (%.40s…): %w", strings.TrimSpace(stmt), err)
 		}
 	}
+	// Additive columns for databases created before multi-block anchors. ADD
+	// COLUMN is idempotent only via a table_info check (it errors on duplicates).
+	for _, c := range []struct{ col, decl string }{
+		{"end_block_id", "TEXT"},
+		{"quote_tail", "TEXT"},
+	} {
+		if err := ensureColumn(ctx, tx, "anchor", c.col, c.decl); err != nil {
+			return err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit migrate: %w", err)
+	}
+	return nil
+}
+
+// ensureColumn adds a column to a table if it is not already present.
+func ensureColumn(ctx context.Context, tx *sql.Tx, table, col, decl string) error {
+	rows, err := tx.QueryContext(ctx, "PRAGMA table_info("+table+")")
+	if err != nil {
+		return fmt.Errorf("table_info %s: %w", table, err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var (
+			cid, notnull, pk int
+			name, ctype      string
+			dflt             sql.NullString
+		)
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return fmt.Errorf("scan table_info: %w", err)
+		}
+		if name == col {
+			return rows.Close() // already present
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "ALTER TABLE "+table+" ADD COLUMN "+col+" "+decl); err != nil {
+		return fmt.Errorf("add column %s.%s: %w", table, col, err)
 	}
 	return nil
 }

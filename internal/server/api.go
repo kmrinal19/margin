@@ -16,7 +16,9 @@ const maxBodyBytes = 1 << 20 // 1 MiB cap on comment POST bodies
 
 type anchorReq struct {
 	BlockID     string `json:"block_id"`
+	EndBlockID  string `json:"end_block_id"`
 	QuoteExact  string `json:"quote_exact"`
+	QuoteTail   string `json:"quote_tail"`
 	QuotePrefix string `json:"quote_prefix"`
 	QuoteSuffix string `json:"quote_suffix"`
 	CharStart   int    `json:"char_start"`
@@ -97,7 +99,9 @@ func (s *Server) handleCreateComment(w http.ResponseWriter, r *http.Request) {
 
 	a := store.Anchor{
 		BlockID:     req.Anchor.BlockID,
+		EndBlockID:  req.Anchor.EndBlockID,
 		QuoteExact:  clipRunes(req.Anchor.QuoteExact, 512), // bound per-GET cascade cost + DOM bloat
+		QuoteTail:   clipRunes(req.Anchor.QuoteTail, 512),
 		QuotePrefix: clipRunes(req.Anchor.QuotePrefix, 64),
 		QuoteSuffix: clipRunes(req.Anchor.QuoteSuffix, 64),
 		CharStart:   req.Anchor.CharStart,

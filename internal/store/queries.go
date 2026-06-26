@@ -38,9 +38,9 @@ func (s *Store) CreateThread(ctx context.Context, slug string, a Anchor, author,
 	}
 
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO anchor(thread_id, block_id, quote_exact, quote_prefix, quote_suffix, char_start, char_end, last_confidence)
-		 VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-		threadID, a.BlockID, a.QuoteExact, a.QuotePrefix, a.QuoteSuffix, a.CharStart, a.CharEnd, a.Confidence,
+		`INSERT INTO anchor(thread_id, block_id, end_block_id, quote_exact, quote_tail, quote_prefix, quote_suffix, char_start, char_end, last_confidence)
+		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		threadID, a.BlockID, endBlockID(a), a.QuoteExact, a.QuoteTail, a.QuotePrefix, a.QuoteSuffix, a.CharStart, a.CharEnd, a.Confidence,
 	); err != nil {
 		return Thread{}, fmt.Errorf("insert anchor: %w", err)
 	}
@@ -56,6 +56,15 @@ func (s *Store) CreateThread(ctx context.Context, slug string, a Anchor, author,
 		return Thread{}, fmt.Errorf("commit: %w", err)
 	}
 	return s.GetThread(ctx, threadID)
+}
+
+// endBlockID returns the anchor's end block, defaulting to the start block for a
+// single-block selection.
+func endBlockID(a Anchor) string {
+	if a.EndBlockID == "" {
+		return a.BlockID
+	}
+	return a.EndBlockID
 }
 
 func ensureDocTx(ctx context.Context, tx *sql.Tx, slug string) (int64, error) {
@@ -95,7 +104,7 @@ func (s *Store) ListThreads(ctx context.Context, slug string, filter Filter) ([]
 
 func (s *Store) queryThreads(ctx context.Context, where string, args ...any) ([]Thread, error) {
 	const cols = `t.id, d.slug, t.status, t.orphaned, t.created_at, t.resolved_at, t.resolved_by,
-		a.block_id, a.quote_exact, a.quote_prefix, a.quote_suffix, a.char_start, a.char_end, a.last_confidence`
+		a.block_id, a.end_block_id, a.quote_exact, a.quote_tail, a.quote_prefix, a.quote_suffix, a.char_start, a.char_end, a.last_confidence`
 	q := `SELECT ` + cols + `
 		FROM comment_thread t
 		JOIN doc d ON d.id = t.doc_id
@@ -115,12 +124,13 @@ func (s *Store) queryThreads(ctx context.Context, where string, args ...any) ([]
 			orph                   int
 			created                string
 			resolvedAt, resolvedBy sql.NullString
+			endBlock, tail         sql.NullString
 			prefix, suffix         sql.NullString
 			cstart, cend           sql.NullInt64
 			conf                   sql.NullFloat64
 		)
 		if err := rows.Scan(&t.ID, &t.DocSlug, &t.Status, &orph, &created, &resolvedAt, &resolvedBy,
-			&t.Anchor.BlockID, &t.Anchor.QuoteExact, &prefix, &suffix, &cstart, &cend, &conf); err != nil {
+			&t.Anchor.BlockID, &endBlock, &t.Anchor.QuoteExact, &tail, &prefix, &suffix, &cstart, &cend, &conf); err != nil {
 			return nil, fmt.Errorf("scan thread: %w", err)
 		}
 		t.Orphaned = orph != 0
@@ -130,6 +140,13 @@ func (s *Store) queryThreads(ctx context.Context, where string, args ...any) ([]
 			t.ResolvedAt = &tm
 		}
 		t.ResolvedBy = resolvedBy.String
+		// Pre-migration rows have NULL end_block_id → single-block (end = start).
+		if endBlock.Valid && endBlock.String != "" {
+			t.Anchor.EndBlockID = endBlock.String
+		} else {
+			t.Anchor.EndBlockID = t.Anchor.BlockID
+		}
+		t.Anchor.QuoteTail = tail.String
 		t.Anchor.QuotePrefix = prefix.String
 		t.Anchor.QuoteSuffix = suffix.String
 		t.Anchor.CharStart = int(cstart.Int64)
@@ -279,8 +296,8 @@ func (s *Store) UpdateAnchorResolutions(ctx context.Context, rows []HealRow) err
 
 	for _, r := range rows {
 		if _, err := tx.ExecContext(ctx,
-			`UPDATE anchor SET block_id=?, quote_exact=?, quote_prefix=?, quote_suffix=?, char_start=?, char_end=?, last_confidence=? WHERE thread_id=?`,
-			r.Anchor.BlockID, r.Anchor.QuoteExact, r.Anchor.QuotePrefix, r.Anchor.QuoteSuffix,
+			`UPDATE anchor SET block_id=?, end_block_id=?, quote_exact=?, quote_tail=?, quote_prefix=?, quote_suffix=?, char_start=?, char_end=?, last_confidence=? WHERE thread_id=?`,
+			r.Anchor.BlockID, endBlockID(r.Anchor), r.Anchor.QuoteExact, r.Anchor.QuoteTail, r.Anchor.QuotePrefix, r.Anchor.QuoteSuffix,
 			r.Anchor.CharStart, r.Anchor.CharEnd, r.Anchor.Confidence, r.ThreadID); err != nil {
 			return fmt.Errorf("update anchor: %w", err)
 		}

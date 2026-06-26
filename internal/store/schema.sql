@@ -22,12 +22,14 @@ CREATE INDEX IF NOT EXISTS ix_thread_doc_status ON comment_thread(doc_id, status
 
 CREATE TABLE IF NOT EXISTS anchor (             -- 1:1 with thread
   thread_id       INTEGER PRIMARY KEY REFERENCES comment_thread(id) ON DELETE CASCADE,
-  block_id        TEXT NOT NULL,                -- content-hash block id
-  quote_exact     TEXT NOT NULL,                -- TextQuoteSelector: exact
-  quote_prefix    TEXT,                         -- up to 32 chars before
-  quote_suffix    TEXT,                         -- up to 32 chars after
-  char_start      INTEGER,                      -- block-relative offsets (last good)
-  char_end        INTEGER,
+  block_id        TEXT NOT NULL,                -- content-hash id of the START block
+  end_block_id    TEXT,                         -- END block for a multi-block selection (else = block_id)
+  quote_exact     TEXT NOT NULL,                -- single block: full quote; multi: head (in start block)
+  quote_tail      TEXT,                         -- multi block: tail (in end block)
+  quote_prefix    TEXT,                         -- up to 32 chars before the start
+  quote_suffix    TEXT,                         -- up to 32 chars after the end
+  char_start      INTEGER,                      -- offset in the start block
+  char_end        INTEGER,                      -- offset in the END block
   last_confidence REAL                          -- 1.0 exact … lower = fuzzier
 );
 

@@ -223,64 +223,110 @@
     return best;
   }
 
-  function paintHighlight(t) {
-    var block = document.getElementById(t.anchor.block_id);
-    if (!block) return; // server already flags true orphans; this is a soft miss
+  // raw offset of a quote inside a block: locate (normalized) then map to UTF-16.
+  function quoteRawRange(block, quoteText, hint) {
     var c = collapse(block.textContent);
-    var quoteCps = Array.from(t.anchor.quote_exact);
-    var nStart = nearestMatch(c.cps, quoteCps, t.anchor.char_start || 0);
-    if (nStart < 0) return; // can't locate confidently — leave it to the sidebar
-    var nEnd = nStart + quoteCps.length;
-    var rStart = c.n2r[nStart];
-    var rEnd = nEnd < c.n2r.length ? c.n2r[nEnd] : c.rawLen;
-    wrapOffsets(block, rStart, rEnd, t);
+    var qc = Array.from(quoteText);
+    var ns = nearestMatch(c.cps, qc, hint || 0);
+    if (ns < 0) return null;
+    var ne = ns + qc.length;
+    return { start: c.n2r[ns], end: ne < c.n2r.length ? c.n2r[ne] : c.rawLen };
   }
 
-  function wrapOffsets(block, start, end, t) {
+  function paintHighlight(t) {
+    var a = t.anchor;
+    var startBlock = document.getElementById(a.block_id);
+    if (!startBlock) return; // server flags true orphans; this is a soft miss
+
+    if (!a.end_block_id || a.end_block_id === a.block_id) {
+      var rng = quoteRawRange(startBlock, a.quote_exact, a.char_start);
+      if (!rng) return;
+      var sp = locateTextPos(startBlock, rng.start);
+      var ep = locateTextPos(startBlock, rng.end);
+      if (sp && ep) wrapDomRange(sp.node, sp.offset, ep.node, ep.offset, t);
+      return;
+    }
+
+    // multi-block: head in the start block, tail in the end block.
+    var endBlock = document.getElementById(a.end_block_id);
+    if (!endBlock) return;
+    var hr = quoteRawRange(startBlock, a.quote_exact, a.char_start);
+    var tr = quoteRawRange(endBlock, a.quote_tail, 0);
+    if (!hr || !tr) return;
+    var s = locateTextPos(startBlock, hr.start);
+    var e = locateTextPos(endBlock, tr.end);
+    if (s && e) wrapDomRange(s.node, s.offset, e.node, e.offset, t);
+  }
+
+  // locateTextPos maps a raw UTF-16 offset within a block to a {node, offset}.
+  function locateTextPos(block, rawOffset) {
     var walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null);
     var pos = 0,
-      ranges = [],
+      last = null,
       node;
     while ((node = walker.nextNode())) {
-      var len = node.nodeValue.length,
-        ns = pos,
-        ne = pos + len;
-      if (ne > start && ns < end) {
-        ranges.push([node, Math.max(start, ns) - ns, Math.min(end, ne) - ns]);
-      }
-      pos = ne;
-      if (pos >= end) break;
+      var len = node.nodeValue.length;
+      if (rawOffset <= pos + len) return { node: node, offset: rawOffset - pos };
+      pos += len;
+      last = node;
     }
-    for (var i = ranges.length - 1; i >= 0; i--) {
-      var n = ranges[i][0];
+    return last ? { node: last, offset: last.nodeValue.length } : null;
+  }
+
+  function makeMark(t) {
+    var mark = el("mark", {
+      class: "mg-hl" + (t.status === "resolved" ? " resolved" : ""),
+      "data-tid": String(t.id),
+      role: "button",
+      tabindex: "0",
+      "aria-label": (t.status === "resolved" ? "Resolved comment: " : "Comment: ") + t.anchor.quote_exact,
+      "aria-details": "mg-thread-" + t.id, // W3C ARIA Annotations: link mark -> thread
+    });
+    mark.addEventListener("click", function () { activate(t.id, true); });
+    mark.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        activate(t.id, true);
+      }
+    });
+    return mark;
+  }
+
+  // wrapDomRange wraps every text-node slice between two DOM points in a <mark>,
+  // even across block boundaries (multi-block selections). Wrapping a single text
+  // node never crosses an element boundary, so surroundContents is safe.
+  function wrapDomRange(startNode, startOff, endNode, endOff, t) {
+    var range = document.createRange();
+    try {
+      range.setStart(startNode, startOff);
+      range.setEnd(endNode, endOff);
+    } catch (e) {
+      return;
+    }
+    if (range.collapsed) return;
+    var root = range.commonAncestorContainer;
+    if (root.nodeType === 3) root = root.parentNode;
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    var nodes = [],
+      node;
+    while ((node = walker.nextNode())) {
+      if (range.intersectsNode(node)) nodes.push(node);
+    }
+    for (var i = nodes.length - 1; i >= 0; i--) {
+      var n = nodes[i];
+      // skip pure-whitespace structural nodes between blocks (e.g. the newline
+      // between two <li>s) so we don't wrap stray slivers
+      if (n !== startNode && n !== endNode && !n.nodeValue.trim()) continue;
+      var s = n === startNode ? startOff : 0;
+      var e = n === endNode ? endOff : n.nodeValue.length;
+      if (e <= s) continue;
       var r = document.createRange();
-      r.setStart(n, ranges[i][1]);
-      r.setEnd(n, ranges[i][2]);
-      var mark = el("mark", {
-        class: "mg-hl" + (t.status === "resolved" ? " resolved" : ""),
-        "data-tid": String(t.id),
-        role: "button",
-        tabindex: "0",
-        "aria-label": (t.status === "resolved" ? "Resolved comment: " : "Comment: ") + t.anchor.quote_exact,
-        "aria-details": "mg-thread-" + t.id, // W3C ARIA Annotations: link mark -> thread
-      });
-      mark.addEventListener("click", function (tid) {
-        return function () {
-          activate(tid, true);
-        };
-      }(t.id));
-      mark.addEventListener("keydown", function (tid) {
-        return function (ev) {
-          if (ev.key === "Enter" || ev.key === " ") {
-            ev.preventDefault();
-            activate(tid, true);
-          }
-        };
-      }(t.id));
+      r.setStart(n, s);
+      r.setEnd(n, e);
       try {
-        r.surroundContents(mark);
-      } catch (e) {
-        /* range crossed an element boundary within one text node — skip */
+        r.surroundContents(makeMark(t));
+      } catch (err) {
+        /* portion crosses an element boundary within one text node — skip */
       }
     }
   }
@@ -370,7 +416,11 @@
       "aria-label": "Comment thread on: " + t.anchor.quote_exact,
     });
 
-    var quote = el("div", { class: "mg-quote", text: t.anchor.quote_exact });
+    var qText = t.anchor.quote_exact;
+    if (t.anchor.end_block_id && t.anchor.end_block_id !== t.anchor.block_id && t.anchor.quote_tail) {
+      qText = t.anchor.quote_exact + " … " + t.anchor.quote_tail; // multi-block: head … tail
+    }
+    var quote = el("div", { class: "mg-quote", text: qText });
     quote.addEventListener("click", function () {
       activate(t.id, true);
     });
@@ -519,32 +569,57 @@
     var sel = window.getSelection();
     if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
     var range = sel.getRangeAt(0);
-    if (!article.contains(range.startContainer)) return null;
-    var block = blockOf(range.startContainer);
-    if (!block) return null;
-    var rawText = block.textContent;
-    var rStart = offsetInBlock(block, range.startContainer, range.startOffset);
-    var rEnd =
-      article.contains(range.endContainer) && blockOf(range.endContainer) === block
-        ? offsetInBlock(block, range.endContainer, range.endOffset)
-        : rawText.length;
-    if (rEnd <= rStart) return null;
+    if (!article.contains(range.startContainer) || !article.contains(range.endContainer)) return null;
+    var startBlock = blockOf(range.startContainer);
+    if (!startBlock) return null;
+    var endBlock = blockOf(range.endContainer) || startBlock;
 
-    // Convert raw UTF-16 offsets into the normalized code-point space the server
-    // uses, and emit the quote/prefix/suffix from that same space.
-    var c = collapse(rawText);
-    var nStart = rawToNorm(c, rStart);
-    var nEnd = rawToNorm(c, rEnd);
-    if (nEnd <= nStart) return null;
-    var exact = c.cps.slice(nStart, nEnd).join("");
-    if (!exact.trim()) return null;
+    // All offsets are computed in the normalized code-point space the server uses.
+    var sc = collapse(startBlock.textContent);
+    var nStart = rawToNorm(sc, offsetInBlock(startBlock, range.startContainer, range.startOffset));
+
+    if (endBlock === startBlock) {
+      var nEnd = rawToNorm(sc, offsetInBlock(startBlock, range.endContainer, range.endOffset));
+      if (nEnd <= nStart) return null;
+      var exact = sc.cps.slice(nStart, nEnd).join("");
+      if (!exact.trim()) return null;
+      return {
+        block_id: startBlock.id,
+        quote_exact: exact,
+        quote_prefix: sc.cps.slice(Math.max(0, nStart - 32), nStart).join(""),
+        quote_suffix: sc.cps.slice(nEnd, nEnd + 32).join(""),
+        char_start: nStart,
+        char_end: nEnd,
+      };
+    }
+
+    // Multi-block: head = start-block portion (nStart→end); tail = end-block
+    // portion (0→nEnd). Each endpoint re-resolves independently server-side.
+    var ec = collapse(endBlock.textContent);
+    var nEnd2 = rawToNorm(ec, offsetInBlock(endBlock, range.endContainer, range.endOffset));
+    var head = sc.cps.slice(nStart).join("");
+    var tail = ec.cps.slice(0, nEnd2).join("");
+    if (head.trim() && tail.trim()) {
+      return {
+        block_id: startBlock.id,
+        end_block_id: endBlock.id,
+        quote_exact: head,
+        quote_tail: tail,
+        quote_prefix: sc.cps.slice(Math.max(0, nStart - 32), nStart).join(""),
+        quote_suffix: ec.cps.slice(nEnd2, nEnd2 + 32).join(""),
+        char_start: nStart,
+        char_end: nEnd2,
+      };
+    }
+    // Selection ended right on a block boundary — anchor the start-block head only.
+    if (!head.trim()) return null;
     return {
-      block_id: block.id,
-      quote_exact: exact,
-      quote_prefix: c.cps.slice(Math.max(0, nStart - 32), nStart).join(""),
-      quote_suffix: c.cps.slice(nEnd, nEnd + 32).join(""),
+      block_id: startBlock.id,
+      quote_exact: head,
+      quote_prefix: sc.cps.slice(Math.max(0, nStart - 32), nStart).join(""),
+      quote_suffix: "",
       char_start: nStart,
-      char_end: nEnd,
+      char_end: sc.cps.length,
     };
   }
 

@@ -178,8 +178,16 @@ func (d *Doc) findExactContext(prefix, exact, suffix []rune) int {
 }
 
 func fuzzyRunes(hay, needle []rune, hint int) int {
-	if len(needle) == 0 || len(needle) > maxFuzzyRunes {
+	if len(needle) == 0 {
 		return -1
+	}
+	// Bitap's bitmask bounds the pattern length, so for a long quote we fuzzy-match
+	// only its leading window to find the START; the caller derives the span length
+	// from the full quote. This lets long (e.g. multi-block) quotes survive edits
+	// that fall after their first maxFuzzyRunes characters.
+	pat := needle
+	if len(pat) > maxFuzzyRunes {
+		pat = pat[:maxFuzzyRunes]
 	}
 	if hint < 0 {
 		hint = 0
@@ -187,7 +195,7 @@ func fuzzyRunes(hay, needle []rune, hint int) int {
 	dmp := diffmatchpatch.New()
 	dmp.MatchThreshold = matchThreshold
 	dmp.MatchDistance = matchDistance
-	return dmp.MatchMain(string(hay), string(needle), hint)
+	return dmp.MatchMain(string(hay), string(pat), hint)
 }
 
 // ── rune helpers ────────────────────────────────────────────────────────────
