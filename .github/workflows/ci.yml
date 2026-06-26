@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go (vet · test -race · lint · build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test (race)
+        run: go test -race ./...
+
+      - name: Build (static, no cgo)
+        run: CGO_ENABLED=0 go build -o margin ./cmd/margin
+
+      - name: Lint
+        # v7 of the action runs golangci-lint v2 (our .golangci.yml is v2 format).
+        # Pin a v2 build compiled with Go >= 1.26 so it can lint a `go 1.26` module
+        # — "latest" on the v6 action resolves to the v1 series (Go 1.24) and fails.
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.9.0
+
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    needs: go
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build margin
+        run: CGO_ENABLED=0 go build -o margin ./cmd/margin
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Playwright + Chromium
+        working-directory: e2e
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run E2E
+        working-directory: e2e
+        run: npx playwright test

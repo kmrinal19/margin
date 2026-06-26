@@ -1,0 +1,30 @@
+# golangci-lint v2 config. Run: golangci-lint run
+# v2 separated linters from formatters and merged stylecheck/gosimple into staticcheck.
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - staticcheck      # bugs, simplifications, style (absorbs gosimple+stylecheck)
+    - govet            # standard vet analyzers
+    - errcheck         # unchecked errors
+    - ineffassign      # ineffectual assignments
+    - unused           # unused code
+    - revive           # fast, configurable lint (golint successor)
+    - misspell         # common misspellings
+    - unconvert        # redundant type conversions
+    - unparam          # unused function params/results
+    - bodyclose        # http.Response.Body always closed
+    - sqlclosecheck    # sql.Rows/Stmt always closed
+    - rowserrcheck     # sql.Rows.Err() checked
+    - contextcheck     # context propagation
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - unparam
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports

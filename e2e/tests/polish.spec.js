@@ -1,0 +1,96 @@
+const { test, expect } = require("@playwright/test");
+const { selectText } = require("./helpers");
+const fs = require("fs");
+const path = require("path");
+
+// Each fixture test uses its OWN slug so the shared comment DB doesn't carry
+// threads between tests (the webServer serves --docs ../docs).
+const docFile = (slug) => path.join(__dirname, "..", "..", "docs", slug + ".md");
+
+async function addComment(page, sub, body) {
+  await selectText(page, sub);
+  await page.locator(".mg-add.show").click();
+  await page.locator("#mg-composer textarea").fill(body);
+  await page.locator("#mg-composer").getByRole("button", { name: "Comment", exact: true }).click();
+}
+
+test("keyboard: j activates a thread and opens the sidebar", async ({ page }) => {
+  await page.goto("/doc/welcome");
+  await addComment(page, "Token-efficient", "keyboard nav check");
+  await expect(page.locator("mark.mg-hl").first()).toBeVisible();
+
+  await page.keyboard.press("Escape"); // close composer/sidebar
+  await page.locator("h1.doc-title").click(); // focus outside any input
+  await page.keyboard.press("j");
+
+  await expect(page.locator("#mg-sidebar.open")).toBeVisible();
+  await expect(page.locator(".mg-card.active")).toBeVisible();
+});
+
+test("orphaned comment surfaces after its quoted text is deleted", async ({ page }) => {
+  const f = docFile("e2e-orphan");
+  fs.writeFileSync(f, "## Section\n\nThe migration deadline is the fifteenth of June for everyone.\n");
+  try {
+    await page.goto("/doc/e2e-orphan");
+    await addComment(page, "fifteenth of June", "Is this date right?");
+    await expect(page.locator("mark.mg-hl").first()).toBeVisible();
+
+    // delete the quoted text from the source — the thread should orphan
+    fs.writeFileSync(f, "## Section\n\nThe migration schedule has been removed.\n");
+    await page.reload();
+
+    await page.locator("#mg-toggle").click(); // open sidebar
+    const orphTab = page.locator('.mg-tab[data-filter="orphaned"]');
+    await expect(orphTab).toBeVisible();
+    await expect(orphTab.locator(".chip")).toHaveText("1");
+    await orphTab.click();
+
+    await expect(page.locator(".mg-card.orphan")).toHaveCount(1);
+    await expect(page.locator(".mg-card.orphan .badge.warn")).toHaveText("orphaned");
+    // an orphan is NOT painted into the body (its position is no longer trusted)
+    await expect(page.locator("mark.mg-hl")).toHaveCount(0);
+
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.screenshot({ path: "shots/orphan-light.png" });
+  } finally {
+    fs.rmSync(f, { force: true });
+  }
+});
+
+test("highlight survives a doc edit (re-anchor heals + repaints on the same words)", async ({ page }) => {
+  const f = docFile("e2e-heal");
+  fs.writeFileSync(f, "## S\n\nThe deployment window opens on Monday and closes on Friday.\n");
+  try {
+    await page.goto("/doc/e2e-heal");
+    await addComment(page, "opens on Monday", "confirm the window?");
+    await expect(page.locator("mark.mg-hl").first()).toBeVisible();
+
+    // Edit the commented block so its content hash (id) changes; the quote survives.
+    fs.writeFileSync(f, "## S\n\nNote: the deployment window opens on Monday and closes on Friday.\n");
+    await page.reload();
+
+    // The highlight must repaint on the same words (not silently drop, not orphan).
+    const hl = page.locator("mark.mg-hl");
+    await expect(hl.first()).toBeVisible();
+    await expect(hl.first()).toContainText("opens on Monday");
+    await page.locator("#mg-toggle").click();
+    await expect(page.locator('.mg-tab[data-filter="orphaned"]')).toBeHidden();
+  } finally {
+    fs.rmSync(f, { force: true });
+  }
+});
+
+test("resolved highlight recedes (no underline) and reopen restores it", async ({ page }) => {
+  const f = docFile("e2e-resolved");
+  fs.writeFileSync(f, "## R\n\nThe quarterly report ships on Friday afternoon.\n");
+  try {
+    await page.goto("/doc/e2e-resolved");
+    await addComment(page, "quarterly report", "confirm cadence");
+    const card = page.locator(".mg-card").first();
+    await card.getByRole("button", { name: "Resolve" }).click();
+    // highlight gains the resolved class
+    await expect(page.locator("mark.mg-hl.resolved").first()).toBeVisible();
+  } finally {
+    fs.rmSync(f, { force: true });
+  }
+});
