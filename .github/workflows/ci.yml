@@ -30,9 +30,12 @@ jobs:
         run: CGO_ENABLED=0 go build -o margin ./cmd/margin
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        # v7 of the action runs golangci-lint v2 (our .golangci.yml is v2 format).
+        # Pin a v2 build compiled with Go >= 1.26 so it can lint a `go 1.26` module
+        # — "latest" on the v6 action resolves to the v1 series (Go 1.24) and fails.
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: latest
+          version: v2.9.0
 
   e2e:
     name: Playwright E2E
