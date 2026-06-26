@@ -113,12 +113,16 @@ test.describe("stacked gutter markers", () => {
     await expect(multi).toHaveText("2");
     await expect(page.locator(".mg-marker")).toHaveCount(1); // no overlapping glyphs
 
-    // clicking cycles through the stacked threads (different card each click).
-    // close the panel between clicks — once open it covers the gutter marker.
+    // clicking cycles through the stacked threads (a different card each click).
+    // the open panel covers the right-gutter marker, so close it before each click.
+    const closePanel = async () => {
+      await page.locator(".mg-sb-close").click();
+      await expect(page.locator("#mg-sidebar.open")).toHaveCount(0);
+    };
+    await closePanel(); // creating the comments left the panel open
     await multi.click();
     const first = await page.locator(".mg-card.active").getAttribute("data-tid");
-    await page.locator(".mg-sb-close").click();
-    await expect(page.locator("#mg-sidebar.open")).toHaveCount(0);
+    await closePanel();
     await multi.click();
     const second = await page.locator(".mg-card.active").getAttribute("data-tid");
     expect(second).not.toBe(first);
