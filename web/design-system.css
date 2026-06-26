@@ -316,9 +316,12 @@ blockquote{margin:var(--s5) 0;padding:var(--s2) var(--s5);border-left:2px solid 
 /* ── COMMENT LAYER — the editor's marks ─────────────────────────── */
 mark.mg-hl{background:var(--hl-open);color:inherit;border-bottom:2px solid var(--hl-open-line);border-radius:1px;padding:.04em 0;cursor:pointer;
   box-decoration-break:clone;-webkit-box-decoration-break:clone;transition:background .15s;}
-mark.mg-hl:hover{background:var(--hl-active);}
-mark.mg-hl.active{background:var(--hl-active);}
+mark.mg-hl:hover,mark.mg-hl.peek{background:var(--hl-active);}
+mark.mg-hl.active{background:var(--hl-active);box-shadow:0 0 0 1px var(--accent);} /* non-colour cue for the active mark */
 mark.mg-hl.resolved{background:var(--hl-resolved);border-bottom-color:transparent;}
+/* a relocated (fuzzy-healed) anchor: dashed underline = "this may have moved" */
+mark.mg-hl.tentative{border-bottom-style:dashed;}
+mark.mg-hl.flash{animation:flash 1.1s ease-out;}
 
 /* select-to-comment — a red-pencil "Note" pill */
 /* hidden by display:none (not just opacity) so the absolutely-positioned pill
@@ -345,6 +348,7 @@ mark.mg-hl.resolved{background:var(--hl-resolved);border-bottom-color:transparen
 .mg-marker.resolved{background:var(--faint);}
 .mg-marker.resolved:not(.multi){background:var(--bg);box-shadow:0 0 0 1.5px var(--faint),0 0 0 3px var(--bg);}
 .mg-marker.multi{right:0;width:1.35rem;height:1.35rem;display:flex;align-items:center;justify-content:center;color:var(--on-accent);font-family:var(--mono);font-size:10px;font-weight:700;}
+.mg-marker.peek{transform:scale(1.3);} /* card hover ↔ marker bridge */
 /* touch: extend the hit target to ~44px without enlarging the visible dot */
 @media (pointer:coarse){
   .mg-marker::before{content:"";position:absolute;top:50%;left:50%;width:44px;height:44px;transform:translate(-50%,-50%);}
@@ -416,6 +420,52 @@ body.sidebar-modal{overflow:hidden;overscroll-behavior:contain;}
 .mg-toast-act{font-family:var(--sans);font-size:var(--fs-sm);font-weight:700;color:var(--accent);background:transparent;
   border:0;border-radius:var(--radius-sm);padding:0 var(--s1);cursor:pointer;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}
 .mg-toast.error .mg-toast-act{color:var(--on-accent);text-decoration:underline;}
+
+/* card quote is a real button now */
+.mg-card .mg-quote[role="button"]{border:0;background:transparent;text-align:left;width:100%;font:inherit;}
+/* disabled + ghost (copy-link) buttons */
+.mg-btn:disabled{opacity:.45;cursor:not-allowed;}
+.mg-btn.ghost{border-color:transparent;color:var(--faint);opacity:0;transition:opacity .12s,color .12s;}
+.mg-card:hover .mg-btn.ghost,.mg-card:focus-within .mg-btn.ghost,.mg-btn.ghost:focus-visible{opacity:1;}
+.mg-btn.ghost:hover{color:var(--accent);}
+.mg-grow{overflow-y:hidden;resize:none;} /* auto-grown by JS */
+/* author identity — a quiet ink/accent split */
+.mg-author.author-ai{color:var(--accent);}
+/* relocated-anchor note + resolution provenance */
+.mg-tentative{font-family:var(--sans);font-size:var(--fs-xs);color:var(--warn-fg);background:var(--warn-bg);border-radius:var(--radius-sm);padding:var(--s2) var(--s3);margin:var(--s2) var(--s3) 0;}
+.mg-card.tentative{border-left-color:var(--warn-fg);}
+.mg-resolved-note{font-family:var(--sans);font-size:var(--fs-xs);color:var(--faint);padding:0 var(--s3) var(--s2);display:flex;gap:.35em;align-items:center;}
+.mg-card.flash{animation:cardflash 1.1s ease-out;}
+@keyframes cardflash{0%,12%{box-shadow:0 0 0 2px var(--accent), var(--shadow);}100%{box-shadow:0 0 0 1px transparent, var(--shadow);}}
+
+/* sidebar empty / onboarding / "manuscript is clean" states */
+.mg-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:var(--s2);padding:var(--s7) var(--s5);color:var(--muted);}
+.mg-empty-mark{color:var(--accent);opacity:.75;}
+.mg-empty-mark svg{width:26px;height:26px;}
+.mg-empty-head{font-family:var(--serif);font-style:italic;font-size:1.18rem;color:var(--ink);margin:0;}
+.mg-empty-sub{font-family:var(--sans);font-size:var(--fs-sm);margin:0;max-width:22rem;line-height:1.5;}
+.mg-empty-hint{margin-top:var(--s3);font-family:var(--sans);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:var(--track-label);
+  color:var(--accent);background:transparent;border:1px solid var(--border-strong);border-radius:999px;padding:.35em .9em;cursor:pointer;transition:border-color .12s;}
+.mg-empty-hint:hover{border-color:var(--accent);}
+
+/* keyboard-shortcut help overlay */
+.mg-help-scrim{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:var(--s5);
+  background:rgba(20,14,8,.42);opacity:0;transition:opacity .18s;}
+.mg-help-scrim.show{opacity:1;}
+.mg-help{position:relative;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);
+  box-shadow:var(--shadow-pop);padding:var(--s6);max-width:26rem;width:100%;transform:translateY(6px);transition:transform .18s ease-out;}
+.mg-help-scrim.show .mg-help{transform:none;}
+.mg-help-title{font-family:var(--serif);font-size:var(--fs-h3);margin:0 0 var(--s4);}
+.mg-help-row{display:flex;align-items:baseline;gap:var(--s4);padding:var(--s2) 0;border-top:1px solid var(--border);font-family:var(--sans);font-size:var(--fs-sm);color:var(--muted);}
+.mg-help-row:first-of-type{border-top:0;}
+.mg-help-row kbd{flex:0 0 5rem;text-align:center;}
+
+/* one-shot page-load reveal on the desk (kept off doc pages so it never perturbs
+   selection geometry / the comment layer); motion-gated */
+@media (prefers-reduced-motion: no-preference){
+  .index{animation:rise .45s ease-out both;}
+  @keyframes rise{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+}
 
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px;}
 @media (prefers-reduced-motion: reduce){html{scroll-behavior:auto;}*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;}}
