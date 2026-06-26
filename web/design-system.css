@@ -8,29 +8,30 @@
   --serif: "Iowan Old Style", "Palatino Linotype", "Palatino", "Charter", "Georgia", "Cambria", "Times New Roman", serif;
   --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", "SFMono-Regular", "Menlo", "Cascadia Code", "Consolas", monospace;
-  --fs-xs:.75rem; --fs-sm:.84rem; --fs-base:1.18rem; --fs-h3:1.32rem; --fs-h2:1.62rem; --fs-h1:2.1rem; --fs-display:2.9rem;
+  --fs-xs:.75rem; --fs-sm:.84rem; --fs-base:1.18rem; --fs-h3:1.36rem; --fs-h2:1.78rem; --fs-h1:2.3rem; --fs-display:3.5rem;
   --lh-body:1.72; --lh-heading:1.18; --lh-tight:1.45; --measure:40rem;
   --track-label:.14em;
   /* SPACING */
   --s1:.25rem; --s2:.5rem; --s3:.75rem; --s4:1rem; --s5:1.5rem; --s6:2rem; --s7:3rem; --s8:4.5rem;
   --radius:7px; --radius-sm:4px; --header-h:60px; --sidebar-w:360px;
 
-  /* COLOR — paper (light) */
-  --bg:#f7f2e7;            /* warm ivory paper */
-  --bg-tint:#f1ead9;
-  --surface:#fbf7ee;       /* raised paper (cards) */
-  --surface-2:#efe7d5;
-  --border:#e0d6bf;        /* hairline rule */
-  --border-strong:#cabd9e;
-  --ink:#22190f;           /* warm near-black ink */
-  --muted:#6a5d49;         /* faded ink */
-  --faint:#94876f;
-  --accent:#b3322a;        /* red pencil */
-  --accent-deep:#8c241d;
-  --accent-soft:#f0dcd3;   /* red wash */
-  --shadow:0 1px 1px rgba(60,42,20,.05), 0 6px 18px rgba(60,42,20,.07);
-  --shadow-pop:0 4px 10px rgba(60,42,20,.10), 0 18px 44px rgba(60,42,20,.16);
-  --grain:.05;
+  /* COLOR — paper (light): brighter paper + deeper ink for punchy contrast */
+  --bg:#faf6ec;            /* clean warm paper */
+  --bg-tint:#f2ebda;
+  --surface:#fffdf6;       /* raised paper (cards) */
+  --surface-2:#efe6d2;
+  --border:#e3d9c1;        /* hairline rule */
+  --border-strong:#c7b793;
+  --ink:#1b1308;           /* deep near-black ink */
+  --muted:#5a4d39;         /* faded ink */
+  --faint:#897b62;
+  --accent:#c62f24;        /* vivid red pencil */
+  --accent-deep:#9c2118;
+  --accent-soft:#f7dbd3;   /* red wash */
+  --gold:#b5841d;          /* secondary ornament / highlighter base */
+  --shadow:0 1px 1px rgba(50,30,12,.06), 0 6px 18px rgba(50,30,12,.09);
+  --shadow-pop:0 4px 10px rgba(50,30,12,.12), 0 18px 44px rgba(50,30,12,.2);
+  --grain:.055;
 
   --info-fg:#2d5a8c; --info-bg:#e9eff5; --info-bd:#bcd0e3;
   --good-fg:#4a6a2f; --good-bg:#eef2e3; --good-bd:#c8d6a8;
@@ -38,34 +39,35 @@
   --danger-fg:#a3342a; --danger-bg:#f6e3dd; --danger-bd:#e3b3a6;
 
   /* comment highlight — highlighter wash + red-pencil underline */
-  --hl-open:rgba(232,178,42,.34);
+  --hl-open:rgba(243,186,38,.44);
   --hl-open-line:var(--accent);
-  --hl-active:rgba(232,178,42,.5);
-  --hl-resolved:rgba(160,140,105,.16);
+  --hl-active:rgba(243,186,38,.66);
+  --hl-resolved:rgba(150,132,98,.18);
 }
 @media (prefers-color-scheme: dark){:root{
-  --bg:#16130d;            /* deep warm ink */
-  --bg-tint:#1b1710;
-  --surface:#211c14;       /* raised */
-  --surface-2:#2a2418;
-  --border:#352d20;
-  --border-strong:#4a3f2d;
-  --ink:#ece2cf;           /* paper-cream text */
-  --muted:#a89a80;
-  --faint:#7c7058;
-  --accent:#e07a5f;        /* warm vermilion */
-  --accent-deep:#cf6147;
-  --accent-soft:#33231b;
-  --shadow:0 1px 2px rgba(0,0,0,.5), 0 8px 22px rgba(0,0,0,.55);
-  --shadow-pop:0 6px 16px rgba(0,0,0,.55), 0 22px 50px rgba(0,0,0,.65);
-  --grain:.04;
+  --bg:#14110a;            /* deep warm ink */
+  --bg-tint:#1a160e;
+  --surface:#221c13;       /* raised */
+  --surface-2:#2d2517;
+  --border:#382f20;
+  --border-strong:#51442f;
+  --ink:#f2e8d4;           /* paper-cream text */
+  --muted:#b3a486;
+  --faint:#807358;
+  --accent:#f07d5f;        /* bright warm vermilion */
+  --accent-deep:#e26244;
+  --accent-soft:#3a2519;
+  --gold:#dba93f;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 8px 22px rgba(0,0,0,.6);
+  --shadow-pop:0 6px 16px rgba(0,0,0,.6), 0 22px 50px rgba(0,0,0,.7);
+  --grain:.045;
   --info-fg:#9cc2e6; --info-bg:#16242f; --info-bd:#2a3f53;
   --good-fg:#a9c98a; --good-bg:#1c2616; --good-bd:#384d28;
-  --warn-fg:#e3bd6e; --warn-bg:#2a2110; --warn-bd:#4a3a18;
-  --danger-fg:#e69a8a; --danger-bg:#2c1a15; --danger-bd:#4d2c22;
-  --hl-open:rgba(224,170,70,.26);
-  --hl-active:rgba(224,170,70,.4);
-  --hl-resolved:rgba(150,135,105,.12);
+  --warn-fg:#e8c172; --warn-bg:#2a2110; --warn-bd:#4a3a18;
+  --danger-fg:#ef9a87; --danger-bg:#2c1a15; --danger-bd:#4d2c22;
+  --hl-open:rgba(235,178,66,.32);
+  --hl-active:rgba(235,178,66,.5);
+  --hl-resolved:rgba(150,135,105,.14);
 }}
 
 *,*::before,*::after{box-sizing:border-box;}
@@ -112,21 +114,28 @@ body.sidebar-open .layout{margin-right:0;margin-left:max(var(--s5),calc((100vw -
 .toc a:hover{color:var(--muted);}
 .toc a.active{color:var(--accent);border-right-color:var(--accent);font-weight:600;}
 .toc a.lvl-3{padding-left:var(--s4);font-size:var(--fs-xs);color:var(--faint);}
-article{max-width:var(--measure);}
+article{max-width:var(--measure);counter-reset:section;}
 
 /* ── PROSE ──────────────────────────────────────────────────────── */
 h1,h2,h3,h4{font-family:var(--serif);line-height:var(--lh-heading);font-weight:600;color:var(--ink);
   margin:var(--s7) 0 var(--s4);scroll-margin-top:calc(var(--header-h) + var(--s4));letter-spacing:-.012em;}
 h1{font-size:var(--fs-h1);}
-h2{font-size:var(--fs-h2);margin-top:var(--s8);padding-bottom:var(--s2);border-bottom:1px solid var(--border);position:relative;}
-h2::before{content:"";position:absolute;left:-1.1rem;top:.12em;width:.28rem;height:1.05em;background:var(--accent);opacity:.85;border-radius:1px;} /* margin tick */
-h3{font-size:var(--fs-h3);} h4{font-size:var(--fs-base);color:var(--muted);font-style:italic;}
+h2{font-size:var(--fs-h2);margin-top:var(--s8);padding-bottom:var(--s2);border-bottom:2px solid var(--border-strong);position:relative;counter-increment:section;}
+h2::before{content:counter(section,decimal-leading-zero);font-family:var(--mono);font-size:.6em;font-weight:700;color:var(--accent);vertical-align:.3em;margin-right:.7em;letter-spacing:0;} /* numbered section */
+h3{font-size:var(--fs-h3);position:relative;} h4{font-size:var(--fs-base);color:var(--muted);font-style:italic;}
+.h-anchor{margin-left:.45em;font-size:.62em;color:var(--accent);text-decoration:none;opacity:0;vertical-align:.08em;transition:opacity .12s;}
+h2:hover .h-anchor,h3:hover .h-anchor,.h-anchor:focus-visible{opacity:.55;}
+.h-anchor:hover{opacity:1;}
 .doc-title{font-size:var(--fs-display);line-height:1.08;letter-spacing:-.02em;margin:0 0 var(--s4);font-weight:650;}
 .dateline{font-family:var(--sans);font-size:var(--fs-xs);color:var(--faint);text-transform:uppercase;letter-spacing:var(--track-label);display:flex;gap:var(--s3);align-items:center;margin:0 0 var(--s5);}
-.dateline .status{color:var(--accent);font-weight:700;}
-.dateline .dot{color:var(--border-strong);}
-.dateline time{font-variant-numeric:oldstyle-nums;}
+.dateline .status{background:var(--accent);color:#fff;padding:.2em .6em;border-radius:3px;font-weight:700;letter-spacing:.1em;}
+.dateline .dot{display:none;}
+.dateline time{font-variant-numeric:oldstyle-nums;letter-spacing:.06em;}
 .lead{font-size:1.32rem;line-height:1.5;color:var(--muted);font-style:italic;margin:0 0 var(--s6);padding-bottom:var(--s5);border-bottom:1px solid var(--border);}
+/* drop cap on the opening paragraph — an editorial flourish */
+.lead + p::first-letter{float:left;font-family:var(--serif);font-weight:650;font-size:4.1em;line-height:.7;padding:.02em .14em 0 0;color:var(--accent);}
+/* selecting a passage previews the highlighter — you're marking up the manuscript */
+#mg-article ::selection{background:var(--hl-open);color:var(--ink);}
 :target{animation:flash 1.8s ease-out;}
 @keyframes flash{0%,15%{background:var(--accent-soft);box-shadow:0 0 0 .35rem var(--accent-soft);}100%{background:transparent;box-shadow:0 0 0 .35rem transparent;}}
 
