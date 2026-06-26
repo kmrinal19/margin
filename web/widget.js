@@ -753,7 +753,15 @@
         closeComposer();
         hidePill();
         pending = null;
-        return loadThen(function () { openSidebar(); setFilter("open"); });
+        return r.json().then(function (created) {
+          // make the new comment the active thread so it's emphasised and the
+          // keyboard actions (r/e) target it immediately
+          return loadThen(function () {
+            if (created && created.id) activeTid = created.id;
+            setFilter("open");
+            openSidebar();
+          });
+        });
       })
       .catch(function () {
         composerError("Couldn’t reach the server. Your text is kept — try again.");
