@@ -213,12 +213,14 @@ mark.mg-hl.active{background:var(--hl-active);}
 mark.mg-hl.resolved{background:var(--hl-resolved);border-bottom-color:transparent;}
 
 /* select-to-comment — a red-pencil "Note" pill */
-.mg-add{position:absolute;z-index:55;transform:translate(-50%,-100%);display:inline-flex;align-items:center;gap:var(--s2);
+/* hidden by display:none (not just opacity) so the absolutely-positioned pill
+   never extends the scroll area when parked off-screen */
+.mg-add{position:absolute;z-index:55;transform:translate(-50%,-100%);display:none;align-items:center;gap:var(--s2);
   font-family:var(--sans);font-size:var(--fs-sm);font-weight:600;letter-spacing:.04em;text-transform:uppercase;
   background:var(--accent);color:#fff;border:0;border-radius:999px;padding:var(--s2) var(--s4);box-shadow:var(--shadow-pop);
-  cursor:pointer;opacity:0;transition:opacity .13s ease-out, transform .13s ease-out;}
+  cursor:pointer;}
 .mg-add::after{content:"";position:absolute;bottom:-5px;left:50%;transform:translateX(-50%) rotate(45deg);width:9px;height:9px;background:var(--accent);}
-.mg-add.show{opacity:1;}
+.mg-add.show{display:inline-flex;}
 .mg-add svg{width:14px;height:14px;}
 
 /* gutter marks */
