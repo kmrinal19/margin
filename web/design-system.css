@@ -171,8 +171,11 @@ article{max-width:var(--measure);counter-reset:section;position:relative;}
 h1,h2,h3,h4{font-family:var(--serif);line-height:var(--lh-heading);font-weight:600;color:var(--ink);
   margin:var(--s7) 0 var(--s4);scroll-margin-top:calc(var(--header-h) + var(--s4));letter-spacing:-.012em;}
 h1{font-size:var(--fs-h1);}
-h2{font-size:var(--fs-h2);margin-top:var(--s8);padding-bottom:var(--s2);border-bottom:2px solid var(--border-strong);position:relative;counter-increment:section;}
-h2::before{content:counter(section,decimal-leading-zero);font-family:var(--mono);font-size:.6em;font-weight:700;color:var(--accent);vertical-align:.3em;margin-right:.7em;letter-spacing:0;} /* numbered section */
+h2{font-size:var(--fs-h2);margin-top:var(--s8);padding-bottom:var(--s2);border-bottom:2px solid var(--border-strong);position:relative;}
+/* section numbering is a DOCUMENT affordance — scope it to article headings so it
+   never bleeds onto UI dialog titles (e.g. the keyboard-help h2) */
+article h2{counter-increment:section;}
+article h2::before{content:counter(section,decimal-leading-zero);font-family:var(--mono);font-size:.6em;font-weight:700;color:var(--accent);vertical-align:.3em;margin-right:.7em;letter-spacing:0;} /* numbered section */
 h3{font-size:var(--fs-h3);position:relative;}
 /* h4 reads as structure, not emphasis — a sans small-caps label (distinct from em/.lead) */
 h4{font-family:var(--sans);font-size:var(--fs-sm);color:var(--muted);font-style:normal;font-weight:700;text-transform:uppercase;letter-spacing:var(--track-label);}
@@ -485,7 +488,7 @@ body.sidebar-modal{overflow:hidden;overscroll-behavior:contain;}
 @media print{
   /* force the light palette regardless of the active theme (match data-theme specificity) */
   :root,:root[data-theme="dark"],:root[data-theme="sepia"]{--bg:#fff;--bg-tint:#fff;--ink:#000;--muted:#333;--border:#ccc;--surface:#fff;--surface-2:#fff;--grain:0;}
-  :root[data-theme="dark"] body{background:#fff;}
+  :root[data-theme="dark"] body,:root[data-theme="sepia"] body{background:#fff;}
   body::before{display:none;}
   #progress,.site-header,.toc,.mg-sidebar,.mg-marker,.mg-add,.mg-gutter,.mg-scrim,.mg-pop,.mg-toast,#mg-toasts{display:none!important;}
   .layout{display:block;max-width:none;padding:0;} article{max-width:none;}

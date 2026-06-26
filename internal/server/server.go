@@ -74,8 +74,10 @@ func (s *Server) buildHandler() http.Handler {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok"))
 	})
-	// Catch-all for unmatched paths → a templated 404 (more specific patterns win).
-	mux.HandleFunc("/", s.handleNotFound)
+	// Catch-all for unmatched GET paths → a templated 404. Scoped to GET (HEAD is
+	// covered) so a wrong-method request to a real route still falls through to
+	// ServeMux's built-in 405 + Allow header instead of being masked as a 404.
+	mux.HandleFunc("GET /", s.handleNotFound)
 
 	// REST API (§10) — shared by the browser widget and the CLI client.
 	mux.HandleFunc("GET /api/docs", s.handleListDocs)

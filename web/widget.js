@@ -1053,7 +1053,8 @@
     });
     postJSON("/api/threads/" + tid, { status: status, by: "human" }, "PATCH")
       .then(function (r) {
-        if (!r.ok) { toast("Update failed (server " + r.status + ").", { error: true }); return; }
+        // revert the optimistic highlight by re-syncing from the server on failure
+        if (!r.ok) { toast("Update failed (server " + r.status + ").", { error: true }); return loadThen(); }
         // activate AFTER the reload/render so the thread follows to its new tab
         // (instead of silently vanishing) and stays the keyboard target
         return loadThen().then(function () {
@@ -1076,6 +1077,7 @@
     var open = threads.filter(function (t) { return !t.orphaned && t.status !== "resolved"; }).length;
     if (open === 0 && threads.length > 0) {
       filter = "open";
+      activeTid = null; // the just-resolved thread is hidden on this tab; don't keep it as the j/k/e target
       syncTabs();
       renderSidebar(); // shows the "The manuscript is clean." empty state
     }
