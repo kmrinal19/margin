@@ -290,6 +290,12 @@ Reiterating §4: no public exposure, no accounts (v1), no realtime editing, no W
 
 ## Appendix A — Design system (copy-pasteable)
 
+> **Superseded by the editorial/manuscript design system.** The implemented look
+> (see `web/design-system.css` and `.claude/rules/frontend.md`) recasts this as an
+> editor's manuscript: a literary system-serif, warm paper / deep ink, and a
+> copy-editor's red-pencil accent — the deliberate opposite of generic slate+indigo
+> sans. The token spec below is kept as the original reference.
+
 System fonts only (no downloads), slate palette with light + dark via `prefers-color-scheme`, 17px/1.65 body on a 68ch measure. Verified contrast — light: ink `#0f172a` on `#fff` = 16:1 (AAA), muted `#475569` = 7.6:1; dark: ink `#e6edf3` on `#0d1117` = 14.7:1. This is the embedded `web/design-system.css`.
 
 ```css

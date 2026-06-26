@@ -3,12 +3,21 @@ paths:
   - "web/**"
 ---
 
-# Front-end: "awe-grade" + intuitive (no deps, no web fonts, no JS highlighter)
+# Front-end: editorial/manuscript aesthetic (no deps, no web fonts, no JS highlighter)
 
-Design tokens & primitives live in `design-system.css` (PRD Appendix A). The comment
-layer lives in `widget.js` (vanilla, no framework). Premium look = near-monochrome
-slate + ONE indigo accent; status colors are functional only. Dim the chrome
-(header/TOC quieter than body). Obsess over vertical alignment of glyphs/chips/TOC.
+Design tokens & primitives live in `design-system.css`; the comment layer lives in
+`widget.js` (vanilla, no framework). **Aesthetic = an editor's manuscript** (do NOT
+regress to generic slate+indigo sans):
+- **Type:** a literary SYSTEM serif (`--serif`: Iowan Old Style / Palatino / Charter /
+  Georgia) for display AND body; `--sans` only for chrome/labels (small-caps, letter-
+  spaced); `--mono` for code. Old-style numerals (`onum`). No web fonts (offline).
+- **Color:** warm paper in light, deep warm ink in dark; ONE accent — a copy-editor's
+  **red pencil** (`--accent`). Status colors functional only. Keep a faint paper grain.
+- **Motifs:** ruled TOC margin, a red "tick" before `h2`, the `margin.` wordmark with a
+  red period, a journal **dateline** (status · date) under the title, highlights drawn
+  as a goldenrod wash under a red-pencil underline, gutter **annotation dots**, and
+  "In the margin" index-card notes in the sidebar.
+- Dim the chrome (header/TOC quieter than body); obsess over vertical alignment.
 
 ## Select-to-comment
 - On `mouseup` over a non-empty selection in `<article>`, float ONE pill **Comment**
@@ -53,4 +62,5 @@ slate + ONE indigo accent; status colors are functional only. Dim the chrome
   control with a visible `:focus-visible` ring. Keyboard map: `c` comment, `j`/`k`
   next/prev thread, `r` reply, `e` resolve/reopen, `Enter` jump-to-anchor, `Esc` close;
   popover traps focus and restores it to the originating marker on Esc.
-- Typography: 17px/1.65 body, `--measure` 66ch (sweet spot), 80ch hard ceiling.
+- Typography: serif body ~1.18rem/1.72, `--measure` ~40rem; serif headings with tight
+  leading; `--sans` reserved for uppercase letter-spaced labels/chips.
