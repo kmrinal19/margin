@@ -45,33 +45,33 @@
   --hl-resolved:rgba(150,132,98,.18);
 }
 @media (prefers-color-scheme: dark){:root{
-  --bg:#16110a;            /* deep warm espresso */
-  --bg-tint:#1e1810;
-  --surface:#28200f;       /* clearly raised — real elevation */
-  --surface-2:#352b18;
-  --border:#41351f;
-  --border-strong:#5e4d29;
-  --ink:#f6eedb;           /* bright warm cream */
-  --muted:#c5b694;         /* lifted so secondary text isn't washed out */
-  --faint:#92845f;
-  --accent:#ff6f52;        /* vivid coral-red */
+  --bg:#16161a;            /* neutral charcoal (barely-there warmth) */
+  --bg-tint:#1c1c20;
+  --surface:#222229;       /* clearly raised — real elevation */
+  --surface-2:#2c2c34;
+  --border:#363640;
+  --border-strong:#4c4c58;
+  --ink:#ece8df;           /* warm-neutral cream */
+  --muted:#b2ad9f;         /* lifted so secondary text isn't washed out */
+  --faint:#827f72;
+  --accent:#ff6f52;        /* vivid coral-red — the warmth + energy */
   --accent-deep:#f0563a;
-  --accent-soft:#3f2417;
-  --gold:#e8b446;
+  --accent-soft:#3a241c;
+  --gold:#e4b24a;
   --shadow:0 1px 2px rgba(0,0,0,.55), 0 10px 26px rgba(0,0,0,.6);
   --shadow-pop:0 8px 20px rgba(0,0,0,.6), 0 26px 56px rgba(0,0,0,.72);
   --grain:.05;
-  --info-fg:#8fc4f0; --info-bg:#13283a; --info-bd:#2c4a66;
-  --good-fg:#aed487; --good-bg:#1d2a13; --good-bd:#3c5526;
-  --warn-fg:#f0c873; --warn-bg:#2e2310; --warn-bd:#564018;
-  --danger-fg:#f6a18c; --danger-bg:#321b14; --danger-bd:#5a3024;
-  --hl-open:rgba(255,196,70,.38);
-  --hl-active:rgba(255,196,70,.58);
-  --hl-resolved:rgba(160,144,112,.16);
+  --info-fg:#8fc4f0; --info-bg:#172734; --info-bd:#2c4a66;
+  --good-fg:#aed487; --good-bg:#1c2916; --good-bd:#3c5526;
+  --warn-fg:#f0c873; --warn-bg:#2c2614; --warn-bd:#544818;
+  --danger-fg:#f6a18c; --danger-bg:#2f1d18; --danger-bd:#553228;
+  --hl-open:rgba(255,196,70,.36);
+  --hl-active:rgba(255,196,70,.56);
+  --hl-resolved:rgba(150,148,140,.14);
 }}
-/* a warm glow gives dark mode depth instead of flat black */
+/* a very subtle, near-neutral lift for depth (no brown tint) */
 @media (prefers-color-scheme: dark){
-  body{background:radial-gradient(125% 75% at 50% -8%, #271d10 0%, var(--bg) 52%);background-attachment:fixed;}
+  body{background:radial-gradient(125% 75% at 50% -8%, #1f1f25 0%, var(--bg) 55%);background-attachment:fixed;}
 }
 
 *,*::before,*::after{box-sizing:border-box;}
