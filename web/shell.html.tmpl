@@ -60,7 +60,10 @@
     a.className = "h-anchor";
     a.href = "#" + h.id;
     a.textContent = "¶";
-    a.setAttribute("aria-label", "Link to this section");
+    // name the link by its section so screen-reader users can tell anchors apart;
+    // tabindex=-1 keeps these decorative links out of the Tab order
+    a.setAttribute("aria-label", "Link to section: " + (h.textContent || "").trim());
+    a.tabIndex = -1;
     h.appendChild(a);
   });
 })();

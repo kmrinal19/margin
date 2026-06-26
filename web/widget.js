@@ -17,6 +17,13 @@
   var activeTid = null;
   var pending = null; // captured anchor awaiting a composer submit
   var lastFocus = null; // element to restore focus to when the composer closes
+  var sidebarOpener = null; // focus to restore when the (modal) sidebar closes
+  var drafts = {}; // tid -> uncommitted reply text, survives sidebar rebuilds
+  var sending = {}; // in-flight guard per action key (no duplicate submits)
+  var NARROW = 1100; // below this the sidebar is a modal overlay with a scrim
+  var mqReduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+  var mqCoarse = window.matchMedia("(hover: none) and (pointer: coarse)");
+  function scrollBehavior() { return mqReduce.matches ? "auto" : "smooth"; }
 
   // ── tiny DOM helper ────────────────────────────────────────────────
   function el(tag, attrs) {
@@ -66,7 +73,7 @@
   scrim.addEventListener("click", closeSidebar);
   document.body.appendChild(scrim);
 
-  var list = el("div", { class: "mg-list", id: "mg-list" });
+  var list = el("div", { class: "mg-list", id: "mg-list", role: "tabpanel", tabindex: "0" });
   var tabsWrap = el("div", { class: "mg-tabs", role: "tablist", "aria-label": "Filter comments" });
   var tabs = {};
   [
@@ -81,8 +88,11 @@
         class: "mg-tab" + (t[2] ? " " + t[2] : ""),
         role: "tab",
         type: "button",
+        id: "mg-tab-" + t[0],
         "data-filter": t[0],
         "aria-selected": "false",
+        "aria-controls": "mg-list",
+        tabindex: "-1",
         onclick: function () {
           setFilter(t[0]);
         },
@@ -94,14 +104,40 @@
     tabs[t[0]] = btn;
     tabsWrap.appendChild(btn);
   });
+  // WAI-ARIA tabs: Arrow/Home/End move between tabs (skipping a hidden orphaned tab)
+  tabsWrap.addEventListener("keydown", function (e) {
+    if (["ArrowLeft", "ArrowRight", "Home", "End"].indexOf(e.key) < 0) return;
+    e.preventDefault();
+    var order = ["open", "resolved", "orphaned"].filter(function (k) { return tabs[k].style.display !== "none"; });
+    var i = order.indexOf(filter);
+    if (e.key === "Home") i = 0;
+    else if (e.key === "End") i = order.length - 1;
+    else if (e.key === "ArrowLeft") i = (i - 1 + order.length) % order.length;
+    else i = (i + 1) % order.length;
+    setFilter(order[i]);
+    tabs[order[i]].focus();
+  });
 
+  var closeBtn = el("button", { class: "mg-sb-close", type: "button", "aria-label": "Close comments", html: "&times;", onclick: closeSidebar });
   var sidebar = el(
     "aside",
     { class: "mg-sidebar", id: "mg-sidebar", "aria-label": "Comments", role: "complementary" },
-    el("div", { class: "mg-sb-head" }, tabsWrap),
+    el("div", { class: "mg-sb-head" }, closeBtn, tabsWrap),
     list
   );
   document.body.appendChild(sidebar);
+  // trap Tab inside the sidebar when it's a modal overlay (narrow screens)
+  sidebar.addEventListener("keydown", function (e) {
+    if (e.key !== "Tab" || !sidebarModal) return;
+    var f = Array.prototype.filter.call(
+      sidebar.querySelectorAll('button, a[href], textarea, input, [tabindex="0"]'),
+      function (x) { return x.offsetParent !== null; }
+    );
+    if (!f.length) return;
+    var first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
 
   var pill = el("button", {
     class: "mg-add",
@@ -273,22 +309,22 @@
     return last ? { node: last, offset: last.nodeValue.length } : null;
   }
 
-  function makeMark(t) {
-    var mark = el("mark", {
-      class: "mg-hl" + (t.status === "resolved" ? " resolved" : ""),
-      "data-tid": String(t.id),
-      role: "button",
-      tabindex: "0",
-      "aria-label": (t.status === "resolved" ? "Resolved comment: " : "Comment: ") + t.anchor.quote_exact,
-      "aria-details": "mg-thread-" + t.id, // W3C ARIA Annotations: link mark -> thread
-    });
+  // Only the PRIMARY fragment of a (possibly multi-node) highlight is a tab stop /
+  // AT target; the rest are aria-hidden so one comment = one announcement.
+  function makeMark(t, primary) {
+    var mark = el("mark", { class: "mg-hl" + (t.status === "resolved" ? " resolved" : ""), "data-tid": String(t.id) });
     mark.addEventListener("click", function () { activate(t.id, true); });
-    mark.addEventListener("keydown", function (ev) {
-      if (ev.key === "Enter" || ev.key === " ") {
-        ev.preventDefault();
-        activate(t.id, true);
-      }
-    });
+    if (primary) {
+      mark.setAttribute("role", "button");
+      mark.setAttribute("tabindex", "0");
+      mark.setAttribute("aria-label", (t.status === "resolved" ? "Resolved comment: " : "Comment: ") + t.anchor.quote_exact);
+      mark.setAttribute("aria-details", "mg-thread-" + t.id); // W3C ARIA Annotations: mark -> thread
+      mark.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); activate(t.id, true); }
+      });
+    } else {
+      mark.setAttribute("aria-hidden", "true");
+    }
     return mark;
   }
 
@@ -307,24 +343,24 @@
     var root = range.commonAncestorContainer;
     if (root.nodeType === 3) root = root.parentNode;
     var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
-    var nodes = [],
+    var frags = [],
       node;
     while ((node = walker.nextNode())) {
-      if (range.intersectsNode(node)) nodes.push(node);
-    }
-    for (var i = nodes.length - 1; i >= 0; i--) {
-      var n = nodes[i];
+      if (!range.intersectsNode(node)) continue;
       // skip pure-whitespace structural nodes between blocks (e.g. the newline
       // between two <li>s) so we don't wrap stray slivers
-      if (n !== startNode && n !== endNode && !n.nodeValue.trim()) continue;
-      var s = n === startNode ? startOff : 0;
-      var e = n === endNode ? endOff : n.nodeValue.length;
-      if (e <= s) continue;
+      if (node !== startNode && node !== endNode && !node.nodeValue.trim()) continue;
+      var s = node === startNode ? startOff : 0;
+      var e = node === endNode ? endOff : node.nodeValue.length;
+      if (e > s) frags.push({ node: node, s: s, e: e });
+    }
+    // wrap last→first so earlier offsets stay valid; the first fragment is primary
+    for (var i = frags.length - 1; i >= 0; i--) {
       var r = document.createRange();
-      r.setStart(n, s);
-      r.setEnd(n, e);
+      r.setStart(frags[i].node, frags[i].s);
+      r.setEnd(frags[i].node, frags[i].e);
       try {
-        r.surroundContents(makeMark(t));
+        r.surroundContents(makeMark(t, i === 0));
       } catch (err) {
         /* portion crosses an element boundary within one text node — skip */
       }
@@ -335,43 +371,42 @@
   function layoutGutter() {
     gutter.innerHTML = "";
     var arect = article.getBoundingClientRect();
-    // group threads by the vertical line of their first highlight
+    // group threads by the vertical line of their mark — or, if a thread couldn't
+    // be painted (soft miss), its anchor block — so every counted comment gets a dot
     var rows = [];
     threads.forEach(function (t) {
       if (t.orphaned) return;
-      var m = article.querySelector('mark.mg-hl[data-tid="' + t.id + '"]');
-      if (!m) return;
-      var top = m.getBoundingClientRect().top - arect.top;
+      var anchorEl = article.querySelector('mark.mg-hl[data-tid="' + t.id + '"]') || document.getElementById(t.anchor.block_id);
+      if (!anchorEl) return;
+      var top = anchorEl.getBoundingClientRect().top - arect.top;
       var row = null;
       for (var i = 0; i < rows.length; i++) {
-        if (Math.abs(rows[i].top - top) < 16) {
-          row = rows[i];
-          break;
-        }
+        if (Math.abs(rows[i].top - top) < 16) { row = rows[i]; break; }
       }
-      if (!row) {
-        row = { top: top, items: [] };
-        rows.push(row);
-      }
+      if (!row) { row = { top: top, items: [] }; rows.push(row); }
       row.items.push(t);
     });
 
     rows.forEach(function (row) {
-      var first = row.items[0];
-      var allResolved = row.items.every(function (t) {
-        return t.status === "resolved";
-      });
       var multi = row.items.length > 1;
-      var label = multi ? row.items.length + " comments" : "1 comment";
+      var resolvedN = row.items.filter(function (t) { return t.status === "resolved"; }).length;
+      var allResolved = resolvedN === row.items.length;
+      var label = multi
+        ? row.items.length + " comments" + (resolvedN ? " (" + resolvedN + " resolved)" : "")
+        : (allResolved ? "1 resolved comment" : "1 comment");
+      var cycle = 0; // stacked markers cycle through their threads on repeated clicks
       var btn = el("button", {
         class: "mg-marker" + (allResolved ? " resolved" : "") + (multi ? " multi" : ""),
         type: "button",
-        "data-tid": String(first.id),
+        tabindex: "-1", // decorative; keyboard/AT reach comments via the in-body marks
+        "data-tid": String(row.items[0].id),
         title: label,
         "aria-label": label,
-        text: multi ? String(row.items.length) : "", // a margin annotation dot; count when stacked
+        text: multi ? String(row.items.length) : "",
         onclick: function () {
-          activate(first.id, true);
+          var t = row.items[cycle % row.items.length];
+          cycle++;
+          activate(t.id, true);
         },
       });
       btn.style.top = row.top + "px";
@@ -389,6 +424,7 @@
   }
 
   function renderSidebar() {
+    var savedScroll = sidebar.scrollTop; // a full rebuild otherwise jumps to top
     list.innerHTML = "";
     var items = filtered();
     if (!items.length) {
@@ -398,7 +434,9 @@
           text:
             filter === "open"
               ? "No open comments. Select text in the doc to add one."
-              : "Nothing here.",
+              : filter === "resolved"
+                ? "No resolved comments yet."
+                : "No orphaned comments — every note still has its place.",
         })
       );
       return;
@@ -406,6 +444,7 @@
     items.forEach(function (t) {
       list.appendChild(card(t));
     });
+    sidebar.scrollTop = savedScroll;
   }
 
   function card(t) {
@@ -413,7 +452,7 @@
       class: "mg-card" + (t.orphaned ? " orphan" : "") + (t.id === activeTid ? " active" : ""),
       "data-tid": String(t.id),
       id: "mg-thread-" + t.id,
-      role: "group",
+      role: "comment",
       "aria-label": "Comment thread on: " + t.anchor.quote_exact,
     });
 
@@ -440,8 +479,9 @@
     });
     c.appendChild(msgs);
 
-    // reply box
-    var input = el("textarea", { class: "mg-input", rows: "1", placeholder: "Reply…", "aria-label": "Reply" });
+    // reply box (draft survives sidebar rebuilds; Enter sends, Shift+Enter = newline)
+    var input = el("textarea", { class: "mg-input", rows: "1", placeholder: "Reply… (Enter to send)", "aria-label": "Reply" });
+    input.value = drafts[t.id] || "";
     var send = el("button", {
       class: "mg-btn primary",
       type: "button",
@@ -451,8 +491,14 @@
         if (body) reply(t.id, body);
       },
     });
+    input.addEventListener("input", function () {
+      drafts[t.id] = input.value;
+    });
     input.addEventListener("keydown", function (e) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") send.click();
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        send.click();
+      }
     });
     c.appendChild(el("div", { class: "mg-reply" }, input, el("div", { class: "mg-card-foot" }, statusChip(t), spacer(), actions(t), send)));
     return c;
@@ -496,8 +542,11 @@
 
   function syncTabs() {
     Object.keys(tabs).forEach(function (k) {
-      tabs[k].setAttribute("aria-selected", k === filter ? "true" : "false");
+      var sel = k === filter;
+      tabs[k].setAttribute("aria-selected", sel ? "true" : "false");
+      tabs[k].tabIndex = sel ? 0 : -1; // roving tabindex
     });
+    list.setAttribute("aria-labelledby", "mg-tab-" + filter);
   }
 
   function setFilter(f) {
@@ -507,21 +556,32 @@
   }
 
   // ── activate / navigate ────────────────────────────────────────────
-  function activate(tid, openIt) {
+  function targetFilter(t) {
+    if (!t) return filter;
+    if (t.orphaned) return "orphaned";
+    return t.status === "resolved" ? "resolved" : "open";
+  }
+
+  function activate(tid, openIt, focusIt) {
     activeTid = tid;
     var t = threadById(tid);
     if (t) {
-      if (t.orphaned) filter = "orphaned";
-      else if (t.status === "resolved") filter = "resolved";
-      else filter = "open";
-      syncTabs();
+      var tf = targetFilter(t);
+      if (filter !== tf) { filter = tf; syncTabs(); } // switch tabs only if the target is hidden
     }
     if (openIt) openSidebar();
     renderSidebar();
     article.querySelectorAll("mark.mg-hl.active").forEach(function (m) { m.classList.remove("active"); });
     var marks = article.querySelectorAll('mark.mg-hl[data-tid="' + tid + '"]');
     marks.forEach(function (m) { m.classList.add("active"); });
-    if (marks.length) marks[0].scrollIntoView({ block: "center", behavior: "smooth" });
+    if (marks.length) {
+      if (focusIt) marks[0].focus({ preventScroll: true }); // ring + AT focus for keyboard nav
+      marks[0].scrollIntoView({ block: "center", behavior: scrollBehavior() });
+    } else if (t) {
+      // soft miss (no painted mark) — at least scroll the anchor block into view
+      var blk = document.getElementById(t.anchor.block_id);
+      if (blk) blk.scrollIntoView({ block: "center", behavior: scrollBehavior() });
+    }
     var c = list.querySelector('.mg-card[data-tid="' + tid + '"]');
     if (c) c.scrollIntoView({ block: "nearest" });
   }
@@ -532,17 +592,57 @@
   }
 
   // ── sidebar open/close ─────────────────────────────────────────────
+  var header = document.querySelector(".site-header");
+  var toc = document.querySelector(".toc");
+  var sidebarModal = false;
+
+  // On narrow viewports the sidebar is a modal overlay: trap focus, inert the
+  // background, lock scroll. On wide viewports it's a companion panel.
+  function enterModal() {
+    if (sidebarModal) return;
+    sidebarModal = true;
+    sidebar.setAttribute("role", "dialog");
+    sidebar.setAttribute("aria-modal", "true");
+    [article, header, toc].forEach(function (e) { if (e) e.setAttribute("inert", ""); });
+    document.body.classList.add("sidebar-modal");
+  }
+  function exitModal() {
+    if (!sidebarModal) return;
+    sidebarModal = false;
+    sidebar.setAttribute("role", "complementary");
+    sidebar.removeAttribute("aria-modal");
+    [article, header, toc].forEach(function (e) { if (e) e.removeAttribute("inert"); });
+    document.body.classList.remove("sidebar-modal");
+  }
+  function syncSidebarMode() {
+    if (!sidebar.classList.contains("open")) return;
+    var narrow = window.innerWidth < NARROW;
+    scrim.classList.toggle("show", narrow);
+    if (narrow) enterModal();
+    else exitModal();
+  }
   function openSidebar() {
+    var wasOpen = sidebar.classList.contains("open");
+    if (!wasOpen) sidebarOpener = document.activeElement;
     sidebar.classList.add("open");
     document.body.classList.add("sidebar-open");
-    if (window.innerWidth < 1100) scrim.classList.add("show");
     if (toggle) toggle.setAttribute("aria-expanded", "true");
+    syncSidebarMode();
+    if (!wasOpen && sidebarModal) {
+      var t = sidebar.querySelector('.mg-tab[aria-selected="true"]') || sidebar.querySelector(".mg-tab");
+      if (t) t.focus();
+    }
   }
   function closeSidebar() {
+    if (!sidebar.classList.contains("open")) return;
     sidebar.classList.remove("open");
     document.body.classList.remove("sidebar-open");
     scrim.classList.remove("show");
+    exitModal();
     if (toggle) toggle.setAttribute("aria-expanded", "false");
+    if (sidebarOpener && document.contains(sidebarOpener) && sidebarOpener.focus) sidebarOpener.focus();
+    else if (toggle) toggle.focus();
+    sidebarOpener = null;
   }
   function toggleSidebar() {
     if (sidebar.classList.contains("open")) closeSidebar();
@@ -627,14 +727,26 @@
   function showPill() {
     var sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) return;
-    var rect = sel.getRangeAt(0).getBoundingClientRect();
+    var range = sel.getRangeAt(0);
+    var rects = range.getClientRects();
+    var rect = rects.length ? rects[0] : range.getBoundingClientRect(); // first line, not the union box
     if (!rect.width && !rect.height) return;
+    pill.classList.add("show"); // show first so offsetHeight is measurable
+    var ph = pill.offsetHeight || 32;
+    var headerH = 60; // var(--header-h)
     pill.style.left = rect.left + rect.width / 2 + window.scrollX + "px";
-    pill.style.top = rect.top + window.scrollY - 8 + "px";
-    pill.classList.add("show");
+    if (rect.top < ph + 8 + headerH) {
+      // no room above (or it'd hide under the sticky header) → flip below the line
+      pill.classList.add("below");
+      pill.style.top = rect.bottom + window.scrollY + 8 + "px";
+    } else {
+      pill.classList.remove("below");
+      pill.style.top = rect.top + window.scrollY - 8 + "px";
+    }
   }
   function hidePill() {
     pill.classList.remove("show");
+    pill.classList.remove("below");
   }
 
   function openComposer() {
@@ -652,7 +764,7 @@
     var ta = el("textarea", { class: "mg-input", rows: "3", placeholder: "Add a comment…", "aria-label": "New comment" });
     var pop = el(
       "div",
-      { class: "mg-pop show", id: "mg-composer", role: "dialog", "aria-label": "New comment" },
+      { class: "mg-pop show", id: "mg-composer", role: "dialog", "aria-modal": "true", "aria-label": "New comment" },
       el(
         "div",
         { class: "mg-reply" },
@@ -677,10 +789,18 @@
     );
     document.body.appendChild(pop);
     var vw = document.documentElement.clientWidth;
+    var vh = window.innerHeight;
     var maxLeft = window.scrollX + vw - pop.offsetWidth - 10;
     var left = anchorRect.left + window.scrollX - 12; // align near the selection start
     pop.style.left = Math.max(window.scrollX + 10, Math.min(left, maxLeft)) + "px";
-    pop.style.top = anchorRect.bottom + window.scrollY + 8 + "px";
+    // vertical: below the selection by default, but flip above / clamp so the whole
+    // popover (incl. the Comment button) stays on screen even for low selections
+    var h = pop.offsetHeight;
+    var top;
+    if (anchorRect.bottom + 8 + h <= vh) top = anchorRect.bottom + window.scrollY + 8;
+    else if (anchorRect.top - 8 - h >= 0) top = anchorRect.top + window.scrollY - h - 8;
+    else top = Math.max(window.scrollY + 8, window.scrollY + vh - h - 10);
+    pop.style.top = top + "px";
     ta.focus();
     ta.addEventListener("keydown", function (e) {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -727,9 +847,14 @@
     });
   }
 
+  function toastHost() {
+    var h = document.getElementById("mg-toasts");
+    if (!h) { h = el("div", { id: "mg-toasts", "aria-live": "polite" }); document.body.appendChild(h); }
+    return h;
+  }
   function toast(msg) {
     var n = el("div", { class: "mg-toast", role: "status", text: msg });
-    document.body.appendChild(n);
+    toastHost().appendChild(n); // a column host so multiple toasts stack, not overlap
     requestAnimationFrame(function () { n.classList.add("show"); });
     setTimeout(function () { n.remove(); }, 4000);
   }
@@ -738,59 +863,83 @@
     if (!pop) { toast(msg); return; }
     var box = pop.querySelector(".mg-reply");
     var e2 = box.querySelector(".mg-err");
-    if (!e2) { e2 = el("div", { class: "mg-err" }); box.appendChild(e2); }
+    if (!e2) {
+      e2 = el("div", { class: "mg-err", role: "alert", "aria-live": "assertive" });
+      box.insertBefore(e2, box.querySelector(".mg-card-foot"));
+    }
     e2.textContent = msg;
+    var ta = pop.querySelector("textarea");
+    if (ta) ta.focus(); // put the user back in position to retry (their text is kept)
   }
 
+  // per-action in-flight guards so a rapid double-click can't double-submit
+  function busy(key) { if (sending[key]) return false; sending[key] = true; return true; }
+  function done(key) { delete sending[key]; }
+
   function createThread(anchor, body) {
+    if (!busy("create")) return;
     postJSON(apiDoc, { anchor: anchor, body: body, author: "human" })
       .then(function (r) {
         if (!r.ok) {
-          // keep the composer + the user's text; never silently lose a comment
           composerError("Couldn’t save (server " + r.status + "). Your text is kept — try again.");
-          return null;
+          return;
         }
         closeComposer();
         hidePill();
         pending = null;
         return r.json().then(function (created) {
-          // make the new comment the active thread so it's emphasised and the
-          // keyboard actions (r/e) target it immediately
-          return loadThen(function () {
-            if (created && created.id) activeTid = created.id;
-            setFilter("open");
-            openSidebar();
+          // select the new comment so it's emphasised and r/e target it
+          return loadThen().then(function () {
+            if (created && created.id) activate(created.id, true);
+            else { setFilter("open"); openSidebar(); }
           });
         });
       })
-      .catch(function () {
-        composerError("Couldn’t reach the server. Your text is kept — try again.");
-      });
+      .catch(function () { composerError("Couldn’t reach the server. Your text is kept — try again."); })
+      .then(function () { done("create"); });
   }
   function reply(tid, body) {
+    var key = "reply:" + tid;
+    if (!busy(key)) return;
     postJSON("/api/threads/" + tid + "/replies", { body: body, author: "human" })
       .then(function (r) {
-        if (!r.ok) { toast("Reply failed (server " + r.status + ")."); return null; }
-        return loadThen(function () { activeTid = tid; });
+        if (!r.ok) { toast("Reply failed (server " + r.status + ")."); return; }
+        delete drafts[tid];
+        return loadThen(function () { activeTid = tid; }).then(function () {
+          var ta = list.querySelector('.mg-card[data-tid="' + tid + '"] textarea');
+          if (ta) ta.focus(); // keep the user in the thread they just replied to
+        });
       })
-      .catch(function () { toast("Reply failed — server unreachable."); });
+      .catch(function () { toast("Reply failed — server unreachable."); })
+      .then(function () { done(key); });
   }
   function setStatus(tid, status) {
+    var key = "status:" + tid;
+    if (!busy(key)) return;
     postJSON("/api/threads/" + tid, { status: status, by: "human" }, "PATCH")
       .then(function (r) {
-        if (!r.ok) { toast("Update failed (server " + r.status + ")."); return null; }
-        return loadThen(function () { activeTid = tid; });
+        if (!r.ok) { toast("Update failed (server " + r.status + ")."); return; }
+        // activate AFTER the reload/render so the thread follows to its new tab
+        // (instead of silently vanishing) and stays the keyboard target
+        return loadThen().then(function () {
+          activate(tid, true);
+          toast(status === "resolved" ? "Resolved" : "Reopened");
+        });
       })
-      .catch(function () { toast("Update failed — server unreachable."); });
+      .catch(function () { toast("Update failed — server unreachable."); })
+      .then(function () { done(key); });
   }
   function loadThen(after) {
+    // own terminal handling: a failed REFRESH must not reject into the mutation's
+    // catch (which would falsely report the mutation itself failed)
     return fetch(apiDoc + "?status=all")
-      .then(function (r) { return r.json(); })
+      .then(function (r) { if (!r.ok) throw new Error("reload failed"); return r.json(); })
       .then(function (data) {
         threads = (data && data.threads) || [];
         if (after) after();
         render();
-      });
+      })
+      .catch(function () { toast("Saved, but couldn’t refresh — reload to see the latest."); });
   }
 
   // ── events ─────────────────────────────────────────────────────────
@@ -824,7 +973,7 @@
       }
     }
     idx = idx < 0 ? (delta > 0 ? 0 : items.length - 1) : Math.min(items.length - 1, Math.max(0, idx + delta));
-    activate(items[idx].id, true);
+    activate(items[idx].id, true, true); // focusIt: move the focus ring with j/k
   }
 
   function toggleActive() {
@@ -834,18 +983,17 @@
   }
 
   document.addEventListener("keydown", function (e) {
+    var tag = (e.target.tagName || "").toLowerCase();
+    var typing = tag === "textarea" || tag === "input";
     if (e.key === "Escape") {
-      if (document.getElementById("mg-composer")) {
-        closeComposer();
-        return;
-      }
+      if (typing && !document.getElementById("mg-composer")) { e.target.blur(); return; } // blur a reply field, keep the panel
+      if (document.getElementById("mg-composer")) { closeComposer(); return; }
       hidePill();
       if (sidebar.classList.contains("open")) closeSidebar();
       return;
     }
-    var tag = (e.target.tagName || "").toLowerCase();
-    if (tag === "textarea" || tag === "input" || e.metaKey || e.ctrlKey || e.altKey) return;
-    if (document.getElementById("mg-composer")) return; // modal open: no background shortcuts
+    if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (document.getElementById("mg-composer")) return; // modal composer: no background shortcuts
 
     switch (e.key) {
       case "c": {
@@ -864,31 +1012,47 @@
         navigate(-1);
         break;
       case "r": {
+        if (activeTid == null) { toast("Select a comment first (use j/k)."); break; }
         var ta = list.querySelector('.mg-card[data-tid="' + activeTid + '"] textarea');
-        if (ta) {
-          openSidebar();
-          ta.focus();
-          e.preventDefault();
-        }
+        if (!ta) { activate(activeTid, true); ta = list.querySelector('.mg-card[data-tid="' + activeTid + '"] textarea'); }
+        if (ta) { openSidebar(); ta.focus(); e.preventDefault(); }
         break;
       }
       case "e":
         toggleActive();
         break;
       case "Enter":
-        if (activeTid != null) activate(activeTid, true);
+        if (activeTid != null) activate(activeTid, true, true);
         break;
     }
   });
 
   var reflow;
   window.addEventListener("resize", function () {
+    syncSidebarMode(); // reconcile scrim / modal state across the breakpoint
     clearTimeout(reflow);
     reflow = setTimeout(layoutGutter, 120);
   });
   window.addEventListener("scroll", function () {
     if (pill.classList.contains("show")) hidePill();
   }, { passive: true });
+
+  // Touch: long-press selection fires selectionchange, not a reliable mouseup.
+  if (mqCoarse.matches) {
+    var selT;
+    document.addEventListener("selectionchange", function () {
+      clearTimeout(selT);
+      selT = setTimeout(function () {
+        if (document.getElementById("mg-composer")) return;
+        var a = captureAnchor();
+        if (a) { pending = a; showPill(); } else hidePill();
+      }, 300);
+    });
+  }
+  // Reflect comments made in another tab/session when this one is refocused.
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden && !document.getElementById("mg-composer")) load();
+  });
 
   load();
 })();
