@@ -12,5 +12,5 @@ var Static embed.FS
 // Templates holds the HTML templates: the page shell, the doc index, and the
 // portable export.
 //
-//go:embed shell.html.tmpl index.html.tmpl export.html.tmpl
+//go:embed shell.html.tmpl index.html.tmpl export.html.tmpl error.html.tmpl
 var Templates embed.FS

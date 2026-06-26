@@ -74,6 +74,8 @@ func (s *Server) buildHandler() http.Handler {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok"))
 	})
+	// Catch-all for unmatched paths → a templated 404 (more specific patterns win).
+	mux.HandleFunc("/", s.handleNotFound)
 
 	// REST API (§10) — shared by the browser widget and the CLI client.
 	mux.HandleFunc("GET /api/docs", s.handleListDocs)
@@ -136,7 +138,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	docs, err := s.listDocs()
 	if err != nil {
 		s.log.Error("list docs", "err", err)
-		http.Error(w, "could not list docs", http.StatusInternalServerError)
+		s.httpError(w, http.StatusInternalServerError)
 		return
 	}
 	if counts, err := s.st.OpenCounts(r.Context()); err != nil {
@@ -300,17 +302,17 @@ func (s *Server) listDocs() ([]render.DocInfo, error) {
 func (s *Server) handleDoc(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 	if !validSlug(slug) {
-		http.NotFound(w, r)
+		s.httpError(w, http.StatusNotFound)
 		return
 	}
 	src, fi, err := s.readDoc(slug)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			http.NotFound(w, r)
+			s.httpError(w, http.StatusNotFound)
 			return
 		}
 		s.log.Error("read doc", "slug", slug, "err", err)
-		http.Error(w, "could not read doc", http.StatusInternalServerError)
+		s.httpError(w, http.StatusInternalServerError)
 		return
 	}
 
@@ -327,6 +329,31 @@ func (s *Server) handleDoc(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.rnd.RenderDoc(w, slug, src); err != nil {
 		s.log.Error("render doc", "slug", slug, "err", err)
+	}
+}
+
+// handleNotFound serves a templated 404 for any unmatched path.
+func (s *Server) handleNotFound(w http.ResponseWriter, _ *http.Request) {
+	s.httpError(w, http.StatusNotFound)
+}
+
+// httpError renders a design-system-styled HTML error page with the given status.
+func (s *Server) httpError(w http.ResponseWriter, status int) {
+	heading, message := errorCopy(status)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := s.rnd.RenderError(w, status, heading, message); err != nil {
+		s.log.Error("render error page", "status", status, "err", err)
+	}
+}
+
+// errorCopy returns the on-brand heading + message for an HTTP status.
+func errorCopy(status int) (heading, message string) {
+	switch status {
+	case http.StatusNotFound:
+		return "No such manuscript.", "This page was left blank. The document you’re looking for isn’t on the desk."
+	default:
+		return "The press jammed.", "Something went wrong on our end. Try again in a moment."
 	}
 }
 

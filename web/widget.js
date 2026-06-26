@@ -852,12 +852,26 @@
     if (!h) { h = el("div", { id: "mg-toasts", "aria-live": "polite" }); document.body.appendChild(h); }
     return h;
   }
-  function toast(msg) {
-    var n = el("div", { class: "mg-toast", role: "status", text: msg });
-    toastHost().appendChild(n); // a column host so multiple toasts stack, not overlap
+  // toast(msg, {error, action:{label,onClick}, duration}) — a column host stacks them.
+  // Errors announce assertively; an optional action button (e.g. Undo) keeps it longer.
+  function toast(msg, opts) {
+    opts = opts || {};
+    var n = el("div", { class: "mg-toast" + (opts.error ? " error" : "") });
+    if (opts.error) n.setAttribute("role", "alert");
+    n.appendChild(el("span", { class: "mg-toast-msg", text: msg }));
+    var timer;
+    function close() { clearTimeout(timer); n.classList.remove("show"); setTimeout(function () { n.remove(); }, 200); }
+    if (opts.action) {
+      var b = el("button", { class: "mg-toast-act", type: "button", text: opts.action.label });
+      b.addEventListener("click", function () { close(); opts.action.onClick(); });
+      n.appendChild(b);
+    }
+    toastHost().appendChild(n);
     requestAnimationFrame(function () { n.classList.add("show"); });
-    setTimeout(function () { n.remove(); }, 4000);
+    timer = setTimeout(close, opts.duration || (opts.error ? 6000 : opts.action ? 6000 : 3500));
+    return { close: close };
   }
+  window.__mgToast = function (m) { toast(m); }; // used by the shell chrome (e.g. copy-link)
   function composerError(msg) {
     var pop = document.getElementById("mg-composer");
     if (!pop) { toast(msg); return; }

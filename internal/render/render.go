@@ -90,6 +90,21 @@ func (r *Renderer) Index(w io.Writer, docs []DocInfo) error {
 	return nil
 }
 
+type errorData struct {
+	Code    int
+	Heading string
+	Message string
+}
+
+// RenderError writes a templated, design-system-styled error page (404/500).
+func (r *Renderer) RenderError(w io.Writer, code int, heading, message string) error {
+	data := errorData{Code: code, Heading: heading, Message: message}
+	if err := r.tmpl.ExecuteTemplate(w, "error.html.tmpl", data); err != nil {
+		return fmt.Errorf("render error page: %w", err)
+	}
+	return nil
+}
+
 type docData struct {
 	Slug   string
 	Title  string

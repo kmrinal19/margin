@@ -3,16 +3,50 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" id="mg-theme-color" content="#faf6ec">
 <title>{{.Title}} · margin</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23faf6ec'/><text x='3.5' y='25' font-family='Georgia,serif' font-size='26' font-weight='700' fill='%231b1308'>m</text><circle cx='27' cy='24' r='3' fill='%23c62f24'/></svg>">
 <link rel="stylesheet" href="/static/design-system.css">
+<script>
+/* no-flash theme: resolve the stored preference (auto|light|dark|sepia) before paint */
+(function () {
+  var COLOR = { dark: "#16161a", sepia: "#f1e6cc", light: "#faf6ec" };
+  function resolved(p) { return p === "auto" ? ((window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light") : p; }
+  function apply(p) {
+    var r = document.documentElement, t = resolved(p);
+    if (t === "light") r.removeAttribute("data-theme"); else r.setAttribute("data-theme", t);
+    r.setAttribute("data-theme-pref", p);
+    var m = document.getElementById("mg-theme-color"); if (m) m.setAttribute("content", COLOR[t] || COLOR.light);
+  }
+  function pref() { try { return localStorage.getItem("margin-theme") || "auto"; } catch (e) { return "auto"; } }
+  apply(pref());
+  window.__mgTheme = apply;
+  if (window.matchMedia) { try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { if (pref() === "auto") apply("auto"); }); } catch (e) {} }
+  document.addEventListener("DOMContentLoaded", function () {
+    var order = ["auto", "light", "dark", "sepia"], btn = document.getElementById("mg-theme");
+    if (!btn) return;
+    function label() { var p = pref(); btn.setAttribute("aria-label", "Theme: " + p + " — click to change"); btn.title = "Theme: " + p.charAt(0).toUpperCase() + p.slice(1); }
+    label();
+    btn.addEventListener("click", function () { var n = order[(order.indexOf(pref()) + 1) % order.length]; try { localStorage.setItem("margin-theme", n); } catch (e) {} apply(n); label(); });
+  });
+})();
+</script>
 </head>
 <body data-slug="{{.Slug}}">
-<div id="progress"></div>
+<a class="skip" href="#mg-article">Skip to content</a>
+<div id="progress" aria-hidden="true"></div>
 <header class="site-header">
   <a class="doc-name" href="/">margin</a>
   <span class="crumb">{{.Title}}</span>
   <span class="spacer"></span>
-  <button class="h-btn" id="mg-toggle" type="button" aria-label="Toggle comments" aria-expanded="false" title="Comments — toggle sidebar">
+  <button class="h-btn h-theme" id="mg-theme" type="button" aria-label="Change theme" title="Theme">
+    <svg class="i-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none"/></svg>
+    <svg class="i-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    <svg class="i-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>
+    <svg class="i-sepia" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M4 5a2 2 0 0 1 2-2h6v16H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-6v16h6a2 2 0 0 1 2 2z"/></svg>
+  </button>
+  <button class="h-btn" id="mg-toggle" type="button" aria-label="Toggle comments" aria-expanded="false" aria-controls="mg-sidebar" title="Comments — toggle sidebar">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     Comments <span class="pill" id="mg-open-count" hidden>0</span>
   </button>
@@ -21,7 +55,7 @@
   <nav class="toc" aria-label="Table of contents">
     {{range .TOC}}<a class="lvl-{{.Level}}" href="#{{.ID}}">{{.Text}}</a>{{end}}
   </nav>
-  <article id="mg-article">
+  <article id="mg-article" role="main" tabindex="-1">
     <h1 class="doc-title">{{.Title}}</h1>
     {{if or .Status .Date}}<div class="dateline">{{with .Status}}<span class="status">{{.}}</span>{{end}}{{if and .Status .Date}}<span class="dot">·</span>{{end}}{{with .Date}}<time>{{.}}</time>{{end}}</div>{{end}}
     {{with .Lead}}<p class="lead">{{.}}</p>{{end}}
@@ -47,8 +81,9 @@
         es.forEach(function (e) {
           var a = map.get(e.target.id);
           if (e.isIntersecting && a) {
-            links.forEach(function (l) { l.classList.remove("active"); });
+            links.forEach(function (l) { l.classList.remove("active"); l.removeAttribute("aria-current"); });
             a.classList.add("active");
+            a.setAttribute("aria-current", "location");
           }
         });
       }, { rootMargin: "-10% 0px -80% 0px" }).observe(h);
@@ -64,10 +99,18 @@
     // tabindex=-1 keeps these decorative links out of the Tab order
     a.setAttribute("aria-label", "Link to section: " + (h.textContent || "").trim());
     a.tabIndex = -1;
+    // click copies the section permalink (and still navigates) — a quiet delight
+    a.addEventListener("click", function () {
+      if (navigator.clipboard) {
+        try { navigator.clipboard.writeText(location.origin + location.pathname + "#" + h.id); } catch (e) {}
+      }
+      if (window.__mgToast) window.__mgToast("Section link copied");
+    });
     h.appendChild(a);
   });
 })();
 </script>
+<div id="mg-toasts" aria-live="polite" aria-atomic="false"></div>
 <script src="/static/widget.js" defer></script>
 </body>
 </html>

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{.Code}} · margin</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23faf6ec'/><text x='3.5' y='25' font-family='Georgia,serif' font-size='26' font-weight='700' fill='%231b1308'>m</text><circle cx='27' cy='24' r='3' fill='%23c62f24'/></svg>">
+<link rel="stylesheet" href="/static/design-system.css">
+<script>
+(function () { try { var p = localStorage.getItem("margin-theme") || "auto"; var t = p === "auto" ? ((window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light") : p; var r = document.documentElement; if (t !== "light") r.setAttribute("data-theme", t); r.setAttribute("data-theme-pref", p); } catch (e) {} })();
+</script>
+</head>
+<body>
+<header class="site-header">
+  <a class="doc-name" href="/">margin</a>
+  <span class="crumb">{{.Code}}</span>
+</header>
+<main class="errorpage" role="main">
+  <div class="err-code">{{.Code}}</div>
+  <h1>{{.Heading}}</h1>
+  <p>{{.Message}}</p>
+  <p class="err-back"><a href="/">❧&nbsp;&nbsp;Back to the desk</a></p>
+</main>
+</body>
+</html>
