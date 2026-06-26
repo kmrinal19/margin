@@ -23,3 +23,17 @@ vendor/
 .idea/
 .vscode/
 *.swp
+
+# Claude Code — keep settings.json committed; local/personal overrides are not
+.claude/settings.local.json
+
+# Playwright E2E (Node test harness; not part of the Go single binary)
+/e2e/node_modules/
+/e2e/test-results/
+/e2e/playwright-report/
+/e2e/.cache/
+/e2e/shots/
+/e2e/e2e-data/
+
+# E2E fixture docs (created/removed by tests)
+/docs/e2e-*.md

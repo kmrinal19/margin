@@ -1,0 +1,216 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
+
+	"github.com/kmrinal19/margin/internal/client"
+	"github.com/kmrinal19/margin/internal/store"
+)
+
+const defaultServer = "http://127.0.0.1:8848"
+
+func clientCtx() (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+}
+
+// parseArgs parses flags that may appear before OR after positional arguments
+// (Go's flag package otherwise stops at the first positional), returning the
+// positionals. This lets `comments welcome --json` and `resolve 42 --note x` work.
+func parseArgs(fs *flag.FlagSet, args []string) []string {
+	var positionals []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return positionals // ExitOnError already handled real errors
+		}
+		args = fs.Args()
+		if len(args) == 0 {
+			break
+		}
+		positionals = append(positionals, args[0])
+		args = args[1:]
+	}
+	return positionals
+}
+
+// emitJSON writes compact JSON to stdout (token-minimal for an agent). Logs and
+// errors go to stderr (via main), keeping stdout pure machine output.
+func emitJSON(v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(b))
+	return nil
+}
+
+func cmdDocs(args []string) error {
+	fs := flag.NewFlagSet("docs", flag.ExitOnError)
+	server := fs.String("server", defaultServer, "margin server URL")
+	asJSON := fs.Bool("json", false, "output JSON")
+	_ = fs.Parse(args)
+
+	ctx, stop := clientCtx()
+	defer stop()
+	docs, err := client.New(*server).Docs(ctx)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return emitJSON(docs)
+	}
+	if len(docs) == 0 {
+		fmt.Println("no docs found in ./docs")
+		return nil
+	}
+	for _, d := range docs {
+		suffix := ""
+		if d.OpenCount > 0 {
+			suffix = fmt.Sprintf("  · %d open", d.OpenCount)
+		}
+		fmt.Printf("%-24s %s%s\n", d.Slug, d.Title, suffix)
+	}
+	return nil
+}
+
+// compactThread is the token-minimal shape an agent consumes (Appendix C):
+// t=thread id, b=block id, q=exact quote, ctx=[prefix,suffix], c=latest comment,
+// s=status. The (b,q) pair lets the agent locate the span without re-reading the doc.
+type compactThread struct {
+	T        int64     `json:"t"`
+	B        string    `json:"b"`
+	Q        string    `json:"q"`
+	Ctx      [2]string `json:"ctx"`
+	C        string    `json:"c"`
+	S        string    `json:"s"`
+	Orphaned bool      `json:"orphaned,omitempty"`
+}
+
+func toCompact(threads []store.Thread) []compactThread {
+	out := make([]compactThread, 0, len(threads))
+	for _, t := range threads {
+		latest := ""
+		if n := len(t.Comments); n > 0 {
+			latest = t.Comments[n-1].Body
+		}
+		out = append(out, compactThread{
+			T:        t.ID,
+			B:        t.Anchor.BlockID,
+			Q:        t.Anchor.QuoteExact,
+			Ctx:      [2]string{t.Anchor.QuotePrefix, t.Anchor.QuoteSuffix},
+			C:        latest,
+			S:        t.Status,
+			Orphaned: t.Orphaned,
+		})
+	}
+	return out
+}
+
+func cmdComments(args []string) error {
+	fs := flag.NewFlagSet("comments", flag.ExitOnError)
+	server := fs.String("server", defaultServer, "margin server URL")
+	_ = fs.Bool("open", true, "only open threads (the default)")
+	all := fs.Bool("all", false, "include resolved threads")
+	asJSON := fs.Bool("json", false, "token-minimal JSON for an agent")
+	rest := parseArgs(fs, args)
+	if len(rest) < 1 {
+		return errors.New(`usage: margin comments <slug> [--all] [--json]`)
+	}
+	status := "open"
+	if *all {
+		status = "all"
+	}
+
+	ctx, stop := clientCtx()
+	defer stop()
+	threads, err := client.New(*server).Comments(ctx, rest[0], status)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return emitJSON(toCompact(threads))
+	}
+	printThreads(threads, rest[0])
+	return nil
+}
+
+func printThreads(threads []store.Thread, slug string) {
+	if len(threads) == 0 {
+		fmt.Printf("no comments on %q\n", slug)
+		return
+	}
+	for _, t := range threads {
+		tag := t.Status
+		if t.Orphaned {
+			tag = "orphaned"
+		}
+		fmt.Printf("#%d [%s]  “%s”\n", t.ID, tag, ellipsis(t.Anchor.QuoteExact, 70))
+		for _, c := range t.Comments {
+			fmt.Printf("    %s: %s\n", c.Author, ellipsis(oneLine(c.Body), 100))
+		}
+		fmt.Printf("    ↳ block %s\n", t.Anchor.BlockID)
+	}
+}
+
+func cmdResolve(args []string) error {
+	fs := flag.NewFlagSet("resolve", flag.ExitOnError)
+	server := fs.String("server", defaultServer, "margin server URL")
+	note := fs.String("note", "", "optional resolution note (posted as an 'ai' reply)")
+	rest := parseArgs(fs, args)
+	if len(rest) < 1 {
+		return errors.New(`usage: margin resolve <thread-id> [--note "…"]`)
+	}
+	id, err := strconv.ParseInt(rest[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid thread id %q", rest[0])
+	}
+	ctx, stop := clientCtx()
+	defer stop()
+	th, err := client.New(*server).SetStatus(ctx, id, store.StatusResolved, "ai", *note)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("resolved thread #%d\n", th.ID)
+	return nil
+}
+
+func cmdReopen(args []string) error {
+	fs := flag.NewFlagSet("reopen", flag.ExitOnError)
+	server := fs.String("server", defaultServer, "margin server URL")
+	rest := parseArgs(fs, args)
+	if len(rest) < 1 {
+		return errors.New("usage: margin reopen <thread-id>")
+	}
+	id, err := strconv.ParseInt(rest[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid thread id %q", rest[0])
+	}
+	ctx, stop := clientCtx()
+	defer stop()
+	th, err := client.New(*server).SetStatus(ctx, id, store.StatusOpen, "ai", "")
+	if err != nil {
+		return err
+	}
+	fmt.Printf("reopened thread #%d\n", th.ID)
+	return nil
+}
+
+func ellipsis(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
+}
+
+func oneLine(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}

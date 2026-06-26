@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>margin</title>
+<link rel="stylesheet" href="/static/design-system.css">
+</head>
+<body>
+<header class="site-header">
+  <a class="doc-name" href="/">margin</a>
+  <span class="crumb">docs</span>
+</header>
+<div class="layout" style="grid-template-columns:minmax(0,1fr);">
+  <div class="index">
+    <h1>Docs</h1>
+    {{if .Docs}}
+    <ul class="doc-list">
+      {{range .Docs}}
+      <li><a href="/doc/{{.Slug}}">
+        <span class="d-title">{{.Title}}</span>
+        <span class="d-slug">{{.Slug}}.md</span>
+        <span class="spacer"></span>
+        {{if gt .OpenCount 0}}<span class="badge warn">{{.OpenCount}} open</span>{{end}}
+      </a></li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p class="empty">No docs yet. Drop a Markdown file in <code>docs/</code> and reload.</p>
+    {{end}}
+  </div>
+</div>
+</body>
+</html>

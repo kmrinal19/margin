@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · margin</title>
+<link rel="stylesheet" href="/static/design-system.css">
+</head>
+<body data-slug="{{.Slug}}">
+<div id="progress"></div>
+<header class="site-header">
+  <a class="doc-name" href="/">margin</a>
+  <span class="crumb">{{.Title}}</span>
+  <span class="spacer"></span>
+  <button class="h-btn" id="mg-toggle" type="button" aria-label="Toggle comments" aria-expanded="false" title="Comments — toggle sidebar">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    Comments <span class="pill" id="mg-open-count" hidden>0</span>
+  </button>
+</header>
+<div class="layout">
+  <nav class="toc" aria-label="Table of contents">
+    {{range .TOC}}<a class="lvl-{{.Level}}" href="#{{.ID}}">{{.Text}}</a>{{end}}
+  </nav>
+  <article id="mg-article">
+    <h1 class="doc-title">{{.Title}}</h1>
+    {{with .Lead}}<p class="lead">{{.}}</p>{{end}}
+    {{.Body}}
+  </article>
+</div>
+<script>
+/* doc chrome — reading progress + active TOC. The only non-widget JS. No deps. */
+(function () {
+  "use strict";
+  var bar = document.getElementById("progress");
+  function onScroll() {
+    var h = document.documentElement, d = h.scrollHeight - h.clientHeight;
+    bar.style.width = (d > 0 ? (h.scrollTop / d) * 100 : 0) + "%";
+  }
+  document.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+  var links = [].slice.call(document.querySelectorAll(".toc a"));
+  var map = new Map(links.map(function (a) { return [a.getAttribute("href").slice(1), a]; }));
+  if ("IntersectionObserver" in window) {
+    document.querySelectorAll("h2[id],h3[id]").forEach(function (h) {
+      new IntersectionObserver(function (es) {
+        es.forEach(function (e) {
+          var a = map.get(e.target.id);
+          if (e.isIntersecting && a) {
+            links.forEach(function (l) { l.classList.remove("active"); });
+            a.classList.add("active");
+          }
+        });
+      }, { rootMargin: "-10% 0px -80% 0px" }).observe(h);
+    });
+  }
+})();
+</script>
+<script src="/static/widget.js" defer></script>
+</body>
+</html>

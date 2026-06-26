@@ -123,14 +123,15 @@ On render (and when serializing threads for the API), re-resolve each open threa
 - `web/` — embedded assets (`design-system.css`, `widget.js`, `shell.html.tmpl`).
 
 ### 8.2 Tech stack (recommended; genuine choices flagged in §14)
-- **Go 1.26** (installed: `go1.26.0 darwin/arm64`).
-- **HTTP:** stdlib `net/http` with the Go 1.22+ enhanced `ServeMux` (method + path-pattern routing) — no framework needed. *(Alt: `chi` for middleware ergonomics.)*
-- **Markdown:** `goldmark` (de-facto Go md lib, used by Hugo; clean AST transformers for block-id injection).
-- **SQLite:** `modernc.org/sqlite` (pure-Go, **no cgo** → trivial single-binary, easy cross-compile). *(Alt: `mattn/go-sqlite3` — cgo, faster, but complicates static builds. **Recommend modernc.**)*
+- **Go 1.26** (installed `go1.26.0`; latest patch `go1.26.4`, 2026-06). `go.mod` pins `go 1.26.0`; Go's two-release support window covers 1.26.x + 1.25.x.
+- **HTTP:** stdlib `net/http` with the Go 1.22+ enhanced `ServeMux` (method + path-pattern routing, `r.PathValue`) — **resolved: stdlib is sufficient** for the ~7 routes; no framework.
+- **Markdown:** `goldmark` **v1.8.2** + `extension.GFM` + `parser.WithAutoHeadingID()`; block IDs stamped by a custom `parser.ASTTransformer` (`util.Prioritized(t, 100)`) via `node.SetAttributeString("id", …)`. v1.8+ exposes AST node position info (source byte offsets) used for hashing.
+- **SQLite:** `modernc.org/sqlite` **v1.53.0** (pure-Go, **no cgo** → trivial single-binary; embeds SQLite 3.53.2), `database/sql` driver name `"sqlite"`. *(`mattn/go-sqlite3` needs cgo; `zombiezen` drops the clean `database/sql` two-pool API — both rejected.)*
 - **Static assets:** stdlib `embed`.
-- **CLI:** stdlib `flag` with a small subcommand dispatch (minimal deps). *(Alt: `spf13/cobra` for richer help.)*
-- **Fuzzy re-anchor:** hand-rolled Bitap / a small `diff-match-patch` Go port. *(Decision.)*
-- **Build:** `go build -o margin ./cmd/margin` → one static binary.
+- **CLI:** stdlib `flag` + manual subcommand dispatch (zero-dep). *(If richer help is ever wanted, `alecthomas/kong` over `cobra`.)*
+- **Fuzzy re-anchor:** hand-rolled Bitap (zero-dep, preferred) or `github.com/sergi/go-diff/diffmatchpatch` **v1.4.0** `MatchMain` with `MatchThreshold` 0.3–0.4, `MatchDistance` 1000.
+- **Logging:** stdlib `log/slog` (`TextHandler` → stderr).
+- **Build:** `CGO_ENABLED=0 go build -o margin ./cmd/margin` → one static binary; release adds `-trimpath -ldflags="-s -w"`.
 
 ### 8.3 Rendering pipeline
 `read docs/<slug>.md` → goldmark parse → **AST transformer stamps `id="b-<hash>"` on block nodes** → render HTML → build TOC from heading nodes → wrap in `shell.html.tmpl` (header / sticky TOC / reading-progress / article) → reference embedded `design-system.css` + `widget.js` → serve. The widget boots, fetches the doc's comments from the API, runs the client-side highlight/marker rendering against the (already server-resolved) anchors.
@@ -163,8 +164,14 @@ Run (dev): `go run ./cmd/margin serve` → open `http://127.0.0.1:8848`.
 ## 9. Data model (SQLite)
 
 ```sql
+-- Applied per-connection via DSN pragmas (modernc.org/sqlite):
+--   _pragma=journal_mode(WAL) _pragma=busy_timeout(5000) _pragma=synchronous(NORMAL)
+--   _pragma=foreign_keys(ON) _pragma=temp_store(MEMORY)   [+ _txlock=immediate on the WRITER pool only]
+-- foreign_keys(ON) is REQUIRED per-connection or the ON DELETE CASCADE below silently no-ops.
 PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
+PRAGMA synchronous  = NORMAL;
+PRAGMA foreign_keys = ON;
 
 CREATE TABLE doc (
   id            INTEGER PRIMARY KEY,
@@ -204,7 +211,7 @@ CREATE TABLE comment (
 );
 CREATE INDEX ix_comment_thread ON comment(thread_id);
 ```
-Notes: status lives on the **thread** (resolve is thread-level). Anchor offsets are **block-relative**, not document-global — editing block 3 must not shift comments in block 40.
+Notes: status lives on the **thread** (resolve is thread-level). Anchor offsets are **block-relative**, not document-global — editing block 3 must not shift comments in block 40. **Concurrency:** open TWO `database/sql` handles to this file — a **writer pool** (`SetMaxOpenConns(1)`, `_txlock=immediate`) for every INSERT/UPDATE/DELETE/tx, and a **reader pool** (4–8 conns) for every SELECT, both WAL. Keep write transactions single-digit-ms; never hold the writer across a render, a network read, or the re-anchor cascade. This is the concrete answer to "multiple concurrent AI sessions + the browser."
 
 ---
 
@@ -246,9 +253,9 @@ The client subcommands are thin HTTP calls to a running `serve`. If the server i
 
 - **Offline / local.** No network calls. Bind `127.0.0.1` by default. Serving over localhost is the **enabling decision** (it's what makes `fetch`/`localStorage`/same-origin POST work — a `file://` page can't).
 - **Single binary.** `go build` → one static artifact; assets embedded. No runtime deps beyond `docs/` + `data/`.
-- **Performance.** Render-on-read is microseconds for doc-sized Markdown; no cache-invalidation class of bug. Add `mtime`+hash memoization only if docs get huge.
+- **Performance.** Render-on-read is sub-millisecond for doc-sized Markdown; no cache-invalidation class of bug. **HTTP:** explicit `http.Server` timeouts (ReadHeader 5s, Read/Write 15s, Idle 120s, `MaxHeaderBytes` 1<<20) + `http.TimeoutHandler(10s)` (shorter than WriteTimeout so the 503 is delivered) + a recover middleware; graceful `Server.Shutdown` on SIGINT/SIGTERM, then WAL checkpoint + close both DB pools. Serve a 304 via ETag/`If-None-Match` on `GET /doc/{slug}` instead of a render cache; reuse a `sync.Pool` of buffers on the render path. Add `mtime`+hash memoization only if a single doc gets huge.
 - **Security.** Localhost only in v1; do **not** expose publicly (the dev-grade server isn't hardened). LAN later: bind `0.0.0.0` behind VPN/LAN only, capture a reviewer name for attribution.
-- **Accessibility.** Design system meets WCAG AA (most pairs AAA); visible focus; reduced-motion; print.
+- **Accessibility.** Design system meets WCAG AA (most pairs AAA); visible focus; reduced-motion; print. The comment overlay uses **W3C ARIA Annotations** — each `<mark>` links to its thread via `aria-details`, and the thread container is `role="comment"` with an accessible name — so screen readers can reach the highlight↔thread relationship (and status must never be conveyed by color alone, WCAG 1.4.1).
 - **Token efficiency.** Structured open-comments API; `(block_id, quote)` removes the need to re-read docs; chrome lives in embedded assets, never re-emitted.
 
 ---
@@ -264,17 +271,16 @@ The client subcommands are thin HTTP calls to a running `serve`. If the server i
 - **M6 — Share.** `export --inline` portable single-file HTML.
 - **Later.** LAN multi-user + reviewer identity.
 
-## 14. Open decisions (resolve at build start)
+## 14. Decisions — RESOLVED at build start (2026-06-25, web-verified)
 
-- **Module path / GitHub org** — e.g. `github.com/<handle>/margin`.
-- **Router** — stdlib `ServeMux` (recommended) vs `chi`.
-- **SQLite driver** — `modernc.org/sqlite` (recommended, pure-Go) vs `mattn/go-sqlite3` (cgo).
-- **CLI lib** — stdlib `flag` (recommended) vs `cobra`.
-- **Fuzzy** — hand-roll Bitap vs a `diff-match-patch` Go port.
-- **Callout syntax** — `:::note` fenced containers vs an admonition extension.
-- **Default port** — 8848? (pick something memorable, fail loudly on conflict — never silently rebind).
-- **Block-id hash** — content-hash (recommended; edited block → re-anchor via quote) vs stable source-order slug + persisted map. Both have failure modes; content-hash + quote-fuzzy is the recommended combo.
-- **Comment authorship** — single-user hardcodes `author='human'`; LAN prompts once.
+- **Module path** — `github.com/kmrinal19/margin`. **Default port** 8848, bind `127.0.0.1`, fail loudly on conflict — never silently rebind.
+- **Router** → stdlib `ServeMux` (Go 1.22+; sufficient for the ~7 routes, no chi).
+- **SQLite driver** → `modernc.org/sqlite` v1.53.0 (pure-Go, no cgo).
+- **CLI lib** → stdlib `flag` + manual dispatch (zero-dep).
+- **Fuzzy** → hand-rolled Bitap (zero-dep, preferred) or `sergi/go-diff` v1.4.0 `MatchMain` (threshold 0.3–0.4, distance 1000).
+- **Callout syntax** → bare `:::warn … :::` fence via a hand-rolled goldmark block parser emitting `.callout`/`.c-title` (no maintained 3rd-party ext matches both the syntax and the design markup).
+- **Block-id hash** → content-hash `b-` + `sha256(normalize(text))[:8]`, with quote-fuzzy fallback for edited blocks.
+- **Comment authorship** → v1 hardcodes `author='human'` (reviewer) / `'ai'` (agent resolves); LAN name-capture deferred.
 
 ## 15. Out of scope / YAGNI
 
@@ -455,6 +461,8 @@ resolveAnchor(a, doc):
 Tuning (diff-match-patch style): `Match_Threshold ≈ 0.3–0.4` (tighter than default 0.5 → prefer orphan over mis-anchor), `Match_Distance ≈ 1000`, keep `exact` ≤ ~32 chars (Bitap window). **Always re-validate against `exact` after a structural hit**, and **always rewrite (heal) the stored anchor** when a fuzzy tier succeeds.
 
 Pitfalls: global offsets orphan everything on any earlier edit (→ block-relative); content-hash block-id changes when its own block is edited (→ quote-fuzzy must be reliable); mis-anchor is worse than orphan; normalize whitespace identically at store + resolve time.
+
+**Coordinate space (resolved during review):** the browser widget and the Go cascade must operate in ONE space — whitespace-collapsed, code-point (rune) offsets. The widget's `collapse()` mirrors `anchor.Normalize` and maps normalized offsets back to raw DOM (UTF-16) positions only when painting `<mark>`; it never feeds raw UTF-16 offsets into the server's rune space. **Healing rewrites `quote_exact`** to the freshly-resolved span (not just the offsets), so `quote_exact == block[start:end]` always holds afterwards — the widget can re-locate the span and the next resolve lands on tier 1 (otherwise every GET re-heals, a write-amplification storm on the single writer). Fuzzy tiers must bound the match within one block (never across the `\n` block separator) and orphan degenerate spans.
 
 ---
 

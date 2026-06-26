@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · margin export</title>
+<style>{{.CSS}}</style>
+</head>
+<body>
+<header class="site-header">
+  <span class="doc-name">margin</span>
+  <span class="crumb">{{.Title}} — exported review</span>
+</header>
+<div class="layout">
+  <nav class="toc" aria-label="Table of contents">
+    {{range .TOC}}<a class="lvl-{{.Level}}" href="#{{.ID}}">{{.Text}}</a>{{end}}
+    {{if .HasComments}}<a class="lvl-2" href="#review-comments">Review comments</a>{{end}}
+  </nav>
+  <article>
+    <h1 class="doc-title">{{.Title}}</h1>
+    {{with .Lead}}<p class="lead">{{.}}</p>{{end}}
+    {{.Body}}
+    {{if .HasComments}}
+    <hr>
+    <h2 id="review-comments">Review comments</h2>
+    {{range .Threads}}
+    <div class="callout {{.CalloutClass}}">
+      <div class="c-title">{{.StatusLabel}}</div>
+      <blockquote>{{.Quote}}</blockquote>
+      {{range .Messages}}<p style="margin-bottom:var(--s3)"><strong>{{.Author}}</strong> <small>{{.When}}</small><br>{{.Body}}</p>{{end}}
+    </div>
+    {{end}}
+    {{end}}
+  </article>
+</div>
+</body>
+</html>
