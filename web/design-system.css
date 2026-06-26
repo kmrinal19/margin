@@ -45,30 +45,34 @@
   --hl-resolved:rgba(150,132,98,.18);
 }
 @media (prefers-color-scheme: dark){:root{
-  --bg:#14110a;            /* deep warm ink */
-  --bg-tint:#1a160e;
-  --surface:#221c13;       /* raised */
-  --surface-2:#2d2517;
-  --border:#382f20;
-  --border-strong:#51442f;
-  --ink:#f2e8d4;           /* paper-cream text */
-  --muted:#b3a486;
-  --faint:#807358;
-  --accent:#f07d5f;        /* bright warm vermilion */
-  --accent-deep:#e26244;
-  --accent-soft:#3a2519;
-  --gold:#dba93f;
-  --shadow:0 1px 2px rgba(0,0,0,.5), 0 8px 22px rgba(0,0,0,.6);
-  --shadow-pop:0 6px 16px rgba(0,0,0,.6), 0 22px 50px rgba(0,0,0,.7);
-  --grain:.045;
-  --info-fg:#9cc2e6; --info-bg:#16242f; --info-bd:#2a3f53;
-  --good-fg:#a9c98a; --good-bg:#1c2616; --good-bd:#384d28;
-  --warn-fg:#e8c172; --warn-bg:#2a2110; --warn-bd:#4a3a18;
-  --danger-fg:#ef9a87; --danger-bg:#2c1a15; --danger-bd:#4d2c22;
-  --hl-open:rgba(235,178,66,.32);
-  --hl-active:rgba(235,178,66,.5);
-  --hl-resolved:rgba(150,135,105,.14);
+  --bg:#16110a;            /* deep warm espresso */
+  --bg-tint:#1e1810;
+  --surface:#28200f;       /* clearly raised — real elevation */
+  --surface-2:#352b18;
+  --border:#41351f;
+  --border-strong:#5e4d29;
+  --ink:#f6eedb;           /* bright warm cream */
+  --muted:#c5b694;         /* lifted so secondary text isn't washed out */
+  --faint:#92845f;
+  --accent:#ff6f52;        /* vivid coral-red */
+  --accent-deep:#f0563a;
+  --accent-soft:#3f2417;
+  --gold:#e8b446;
+  --shadow:0 1px 2px rgba(0,0,0,.55), 0 10px 26px rgba(0,0,0,.6);
+  --shadow-pop:0 8px 20px rgba(0,0,0,.6), 0 26px 56px rgba(0,0,0,.72);
+  --grain:.05;
+  --info-fg:#8fc4f0; --info-bg:#13283a; --info-bd:#2c4a66;
+  --good-fg:#aed487; --good-bg:#1d2a13; --good-bd:#3c5526;
+  --warn-fg:#f0c873; --warn-bg:#2e2310; --warn-bd:#564018;
+  --danger-fg:#f6a18c; --danger-bg:#321b14; --danger-bd:#5a3024;
+  --hl-open:rgba(255,196,70,.38);
+  --hl-active:rgba(255,196,70,.58);
+  --hl-resolved:rgba(160,144,112,.16);
 }}
+/* a warm glow gives dark mode depth instead of flat black */
+@media (prefers-color-scheme: dark){
+  body{background:radial-gradient(125% 75% at 50% -8%, #271d10 0%, var(--bg) 52%);background-attachment:fixed;}
+}
 
 *,*::before,*::after{box-sizing:border-box;}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;}
@@ -77,6 +81,7 @@ body{
   font-family:var(--serif);font-size:var(--fs-base);line-height:var(--lh-body);
   font-feature-settings:"kern","liga","onum","pnum";
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  overflow-x:clip; /* safety net: never scroll the page sideways (clip keeps sticky working) */
 }
 /* faint paper grain + warmth for depth */
 body::before{
@@ -116,7 +121,7 @@ body.sidebar-open .layout{margin-right:0;margin-left:max(var(--s5),calc((100vw -
 .toc a.lvl-2{counter-increment:toc;}
 .toc a.lvl-2::before{content:counter(toc,decimal-leading-zero);font-family:var(--mono);font-size:.85em;font-weight:700;color:var(--accent);margin-right:.55em;}
 .toc a.lvl-3{padding-left:var(--s5);font-size:var(--fs-xs);color:var(--faint);}
-article{max-width:var(--measure);counter-reset:section;}
+article{max-width:var(--measure);counter-reset:section;position:relative;}
 
 /* ── PROSE ──────────────────────────────────────────────────────── */
 h1,h2,h3,h4{font-family:var(--serif);line-height:var(--lh-heading);font-weight:600;color:var(--ink);
@@ -281,6 +286,12 @@ mark.mg-hl.resolved{background:var(--hl-resolved);border-bottom-color:transparen
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px;}
 @media (prefers-reduced-motion: reduce){html{scroll-behavior:auto;}*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;}}
 @media (max-width:1024px){.layout{grid-template-columns:minmax(0,1fr);padding-top:var(--s6);}.toc{display:none;}}
+/* wide content scrolls inside itself on small screens (goldmark tables aren't wrapped) */
+@media (max-width:760px){
+  article table{display:block;overflow-x:auto;width:max-content;max-width:100%;}
+  .schema{overflow-x:auto;}
+  .layout{padding-left:var(--s5);padding-right:var(--s5);}
+}
 @media (max-width:760px){.mg-sidebar{width:min(var(--sidebar-w),100vw);}}
 @media print{
   :root{--bg:#fff;--bg-tint:#fff;--ink:#000;--muted:#333;--border:#ccc;--surface:#fff;--surface-2:#fff;--grain:0;}
