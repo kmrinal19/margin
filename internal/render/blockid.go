@@ -78,6 +78,13 @@ func nodeText(n ast.Node, source []byte) string {
 		switch t := c.(type) {
 		case *ast.Text:
 			b.Write(t.Segment.Value(source))
+			// A soft/hard line break renders as whitespace in the browser, so emit
+			// one here too — otherwise blockText diverges from the DOM's textContent
+			// and comments spanning a wrapped line spuriously orphan. Normalize()
+			// later collapses it to a single space.
+			if t.SoftLineBreak() || t.HardLineBreak() {
+				b.WriteByte('\n')
+			}
 		case *ast.String:
 			b.Write(t.Value)
 		case *ast.AutoLink:

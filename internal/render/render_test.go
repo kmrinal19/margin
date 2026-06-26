@@ -78,6 +78,20 @@ func TestRenderDocEscapesNothingInTrustedSource(t *testing.T) {
 	}
 }
 
+func TestBlocksSoftWrapKeepsWhitespace(t *testing.T) {
+	t.Parallel()
+	r := newRenderer(t)
+	// A paragraph wrapped across two source lines renders as one line with a space
+	// in the browser; block text must match (else anchors spanning the wrap orphan).
+	blocks := r.Blocks([]byte("one two three\nfour five six\n"))
+	if len(blocks) == 0 {
+		t.Fatal("no blocks")
+	}
+	if !strings.Contains(blocks[0].Text, "three four") {
+		t.Errorf("soft-wrap boundary lost its space: %q", blocks[0].Text)
+	}
+}
+
 func TestSplitFrontMatter(t *testing.T) {
 	t.Parallel()
 	fm, body := splitFrontMatter([]byte("---\ntitle: T\ndate: 2026-01-01\n---\nbody here"))
