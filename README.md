@@ -82,11 +82,24 @@ embedded with `//go:embed`. No web fonts, no JS framework, no syntax highlighter
 ## Development
 
 ```sh
+make            # list all tasks
+make install    # build + install `margin` onto your PATH
+make check      # vet + golangci-lint + go test -race  (the pre-push gate)
+make e2e        # build, then run the Playwright browser tests
+make run        # go run the server (make run ARGS="--port 8848")
+```
+
+The underlying commands, if you prefer them raw:
+
+```sh
 go test -race ./...          # unit + integration tests
 go vet ./...
 golangci-lint run            # config: .golangci.yml
 cd e2e && npm install && npx playwright test   # browser E2E of the comment UI
 ```
+
+CI (`.github/workflows/ci.yml`) runs vet + race tests + golangci-lint + the
+Playwright E2E on every push and pull request.
 
 Architecture, layout, and the hard invariants are documented for contributors (human
 and AI) in [CLAUDE.md](./CLAUDE.md) and the path-scoped rules under `.claude/rules/`.
