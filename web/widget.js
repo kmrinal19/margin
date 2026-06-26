@@ -40,8 +40,8 @@
     return n;
   }
 
-  var BUBBLE =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  var PENCIL =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 
   function rel(iso) {
     var t = new Date(iso).getTime();
@@ -107,7 +107,7 @@
     class: "mg-add",
     type: "button",
     "aria-label": "Comment on selection",
-    html: BUBBLE + "<span>Comment</span>",
+    html: PENCIL + "<span>Comment</span>",
     onclick: openComposer,
   });
   document.body.appendChild(pill);
@@ -361,19 +361,20 @@
       var allResolved = row.items.every(function (t) {
         return t.status === "resolved";
       });
+      var multi = row.items.length > 1;
+      var label = multi ? row.items.length + " comments" : "1 comment";
       var btn = el("button", {
-        class: "mg-marker" + (allResolved ? " resolved" : ""),
+        class: "mg-marker" + (allResolved ? " resolved" : "") + (multi ? " multi" : ""),
         type: "button",
         "data-tid": String(first.id),
-        title: row.items.length > 1 ? row.items.length + " comments" : "1 comment",
-        "aria-label": row.items.length > 1 ? row.items.length + " comments" : "1 comment",
-        html: BUBBLE,
+        title: label,
+        "aria-label": label,
+        text: multi ? String(row.items.length) : "", // a margin annotation dot; count when stacked
         onclick: function () {
           activate(first.id, true);
         },
       });
       btn.style.top = row.top + "px";
-      if (row.items.length > 1) btn.appendChild(el("span", { class: "count", text: String(row.items.length) }));
       gutter.appendChild(btn);
     });
   }

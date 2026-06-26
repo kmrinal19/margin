@@ -204,13 +204,11 @@ mark.mg-hl.resolved{background:var(--hl-resolved);border-bottom-color:transparen
 /* gutter marks */
 .mg-gutter{position:absolute;top:0;right:-2.6rem;width:1.8rem;height:100%;pointer-events:none;}
 @media (max-width:1240px){.mg-gutter{right:-.4rem;}}
-.mg-marker{position:absolute;right:0;width:1.4rem;height:1.4rem;display:flex;align-items:center;justify-content:center;
-  background:transparent;color:var(--accent);border:0;cursor:pointer;pointer-events:auto;padding:0;
-  transition:transform .12s ease-out;}
-.mg-marker:hover,.mg-marker.active{transform:scale(1.18);}
-.mg-marker.resolved{color:var(--faint);}
-.mg-marker svg{width:15px;height:15px;}
-.mg-marker .count{position:absolute;top:-.45rem;right:-.45rem;font-family:var(--mono);font-size:10px;font-weight:700;background:var(--accent);color:#fff;border-radius:999px;min-width:15px;height:15px;line-height:15px;text-align:center;padding:0 2px;}
+/* a margin annotation dot; a numbered disc when several share a line */
+.mg-marker{position:absolute;right:.4rem;width:.62rem;height:.62rem;border-radius:50%;background:var(--accent);border:0;cursor:pointer;pointer-events:auto;padding:0;box-shadow:0 0 0 3px var(--bg);transition:transform .12s ease-out;}
+.mg-marker:hover,.mg-marker.active{transform:scale(1.3);}
+.mg-marker.resolved{background:var(--faint);}
+.mg-marker.multi{right:0;width:1.35rem;height:1.35rem;display:flex;align-items:center;justify-content:center;color:#fff;font-family:var(--mono);font-size:10px;font-weight:700;}
 
 /* ── SIDEBAR — the margin ──────────────────────────────────────── */
 .mg-sidebar{position:fixed;top:var(--header-h);right:0;width:var(--sidebar-w);height:calc(100vh - var(--header-h));
