@@ -641,6 +641,13 @@
     if (!pending) return;
     closeComposer();
     lastFocus = document.activeElement;
+    // Capture the pill's position BEFORE hiding it — a display:none element has a
+    // zero rect, which previously pinned the composer to the top-left corner.
+    var anchorRect = pill.getBoundingClientRect();
+    if (!anchorRect.width && !anchorRect.height) {
+      var sel0 = window.getSelection();
+      if (sel0 && sel0.rangeCount) anchorRect = sel0.getRangeAt(0).getBoundingClientRect();
+    }
     hidePill();
     var ta = el("textarea", { class: "mg-input", rows: "3", placeholder: "Add a comment…", "aria-label": "New comment" });
     var pop = el(
@@ -669,9 +676,11 @@
       )
     );
     document.body.appendChild(pop);
-    var pr = pill.getBoundingClientRect();
-    pop.style.left = Math.min(pr.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - 340) + "px";
-    pop.style.top = pr.bottom + window.scrollY + 8 + "px";
+    var vw = document.documentElement.clientWidth;
+    var maxLeft = window.scrollX + vw - pop.offsetWidth - 10;
+    var left = anchorRect.left + window.scrollX - 12; // align near the selection start
+    pop.style.left = Math.max(window.scrollX + 10, Math.min(left, maxLeft)) + "px";
+    pop.style.top = anchorRect.bottom + window.scrollY + 8 + "px";
     ta.focus();
     ta.addEventListener("keydown", function (e) {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
