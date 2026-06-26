@@ -105,6 +105,7 @@ body{
   margin:0;background:var(--bg);color:var(--ink);
   font-family:var(--serif);font-size:var(--fs-base);line-height:var(--lh-body);
   font-feature-settings:"kern","liga","onum","pnum";
+  hanging-punctuation:first allow-end last; /* optical margins for quotes/bullets (Safari) */
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
   overflow-x:clip; /* safety net: never scroll the page sideways (clip keeps sticky working) */
 }
@@ -130,7 +131,7 @@ body::before{
   display:inline-flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s2);text-transform:uppercase;letter-spacing:.08em;}
 .h-btn:hover{color:var(--accent);}
 .h-btn svg{opacity:.8;}
-.h-btn .pill{font-family:var(--mono);font-size:11px;font-weight:600;background:var(--accent);color:var(--on-accent);border-radius:999px;padding:.05em .5em;min-width:1.5em;text-align:center;letter-spacing:0;}
+.h-btn .pill{font-family:var(--mono);font-size:11px;font-weight:600;background:var(--accent);color:var(--on-accent);border-radius:999px;padding:.05em .5em;min-width:1.5em;text-align:center;letter-spacing:0;font-variant-numeric:lining-nums tabular-nums;}
 /* theme toggle — one glyph per preference, swapped by [data-theme-pref] */
 .h-theme{padding-left:var(--s2);padding-right:var(--s2);}
 .h-theme svg{display:none;}
@@ -172,7 +173,9 @@ h1,h2,h3,h4{font-family:var(--serif);line-height:var(--lh-heading);font-weight:6
 h1{font-size:var(--fs-h1);}
 h2{font-size:var(--fs-h2);margin-top:var(--s8);padding-bottom:var(--s2);border-bottom:2px solid var(--border-strong);position:relative;counter-increment:section;}
 h2::before{content:counter(section,decimal-leading-zero);font-family:var(--mono);font-size:.6em;font-weight:700;color:var(--accent);vertical-align:.3em;margin-right:.7em;letter-spacing:0;} /* numbered section */
-h3{font-size:var(--fs-h3);position:relative;} h4{font-size:var(--fs-base);color:var(--muted);font-style:italic;}
+h3{font-size:var(--fs-h3);position:relative;}
+/* h4 reads as structure, not emphasis — a sans small-caps label (distinct from em/.lead) */
+h4{font-family:var(--sans);font-size:var(--fs-sm);color:var(--muted);font-style:normal;font-weight:700;text-transform:uppercase;letter-spacing:var(--track-label);}
 .h-anchor{margin-left:.45em;font-size:.62em;color:var(--accent);text-decoration:none;opacity:0;vertical-align:.08em;transition:opacity .12s;}
 h2:hover .h-anchor,h3:hover .h-anchor,.h-anchor:focus-visible{opacity:.55;}
 .h-anchor:hover{opacity:1;}
@@ -180,10 +183,13 @@ h2:hover .h-anchor,h3:hover .h-anchor,.h-anchor:focus-visible{opacity:.55;}
 .dateline{font-family:var(--sans);font-size:var(--fs-xs);color:var(--faint);text-transform:uppercase;letter-spacing:var(--track-label);display:flex;gap:var(--s3);align-items:center;margin:0 0 var(--s5);}
 .dateline .status{background:var(--accent);color:var(--on-accent);padding:.2em .6em;border-radius:3px;font-weight:700;letter-spacing:.1em;}
 .dateline .dot{display:none;}
-.dateline time{font-variant-numeric:oldstyle-nums;letter-spacing:.06em;}
+.dateline time,.dateline .read,.dateline .words{font-variant-numeric:tabular-nums lining-nums;letter-spacing:.06em;}
+/* a faint "·" between metadata items (never before the status badge) */
+.dateline > :not(.status) + *::before,.dateline .status + *::before{content:"·";margin-right:var(--s3);color:var(--faint);}
 .lead{font-size:1.32rem;line-height:1.5;color:var(--muted);font-style:italic;margin:0 0 var(--s6);padding-bottom:var(--s5);border-bottom:1px solid var(--border);}
 /* drop cap on the opening paragraph — an editorial flourish */
-.lead + p::first-letter{float:left;font-family:var(--serif);font-weight:650;font-size:4.1em;line-height:.7;padding:.02em .14em 0 0;color:var(--accent);}
+/* drop cap on the first body paragraph (skipped when a doc opens with a heading/list/callout) */
+.prose > p:first-child::first-letter{float:left;font-family:var(--serif);font-weight:650;font-size:4.1em;line-height:.7;padding:.02em .14em 0 0;color:var(--accent);}
 /* selecting a passage previews the highlighter — you're marking up the manuscript */
 #mg-article ::selection{background:var(--hl-open);color:var(--ink);}
 :target{animation:flash 1.8s ease-out;}
@@ -218,7 +224,9 @@ kbd{font-family:var(--mono);font-size:.8em;background:var(--surface-2);border:1p
 
 .table-wrap{overflow-x:auto;margin:0 0 var(--s5);}
 table{border-collapse:collapse;width:100%;font-size:.95rem;}
-th,td{text-align:left;padding:var(--s3) var(--s4);border-bottom:1px solid var(--border);vertical-align:top;}
+th,td{text-align:left;padding:var(--s3) var(--s4);border-bottom:1px solid var(--border);vertical-align:top;font-variant-numeric:tabular-nums lining-nums;}
+/* zebra the body rows very faintly so dense tables don't read as a wall of hairlines */
+tbody tr:nth-child(even){background:color-mix(in srgb,var(--bg-tint) 55%,transparent);}
 thead th{font-family:var(--sans);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;border-bottom:1.5px solid var(--border-strong);}
 tbody tr:hover{background:var(--bg-tint);}
 

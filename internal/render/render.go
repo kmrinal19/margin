@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"strconv"
 	"sync"
 
 	"github.com/kmrinal19/margin/web"
@@ -106,24 +107,28 @@ func (r *Renderer) RenderError(w io.Writer, code int, heading, message string) e
 }
 
 type docData struct {
-	Slug   string
-	Title  string
-	Date   string
-	Status string
-	Lead   string
-	TOC    []TOCItem
-	Body   template.HTML
+	Slug       string
+	Title      string
+	Date       string
+	Status     string
+	Lead       string
+	TOC        []TOCItem
+	Body       template.HTML
+	ReadMins   int
+	WordsHuman string
 }
 
 // Article is a rendered document's pieces, without any page chrome. Used by
 // both the served page shell and the portable export.
 type Article struct {
-	Title  string
-	Lead   string
-	Date   string
-	Status string
-	TOC    []TOCItem
-	Body   template.HTML
+	Title    string
+	Lead     string
+	Date     string
+	Status   string
+	TOC      []TOCItem
+	Body     template.HTML
+	Words    int
+	ReadMins int
 }
 
 // RenderArticle renders a document's Markdown source into its pieces.
@@ -143,6 +148,7 @@ func (r *Renderer) RenderArticle(src []byte) (Article, error) {
 	}
 
 	toc := buildTOC(doc, body)
+	words := countWords(body)
 
 	buf := r.bufPool.Get().(*bytes.Buffer)
 	buf.Reset()
@@ -154,13 +160,47 @@ func (r *Renderer) RenderArticle(src []byte) (Article, error) {
 	r.bufPool.Put(buf)
 
 	return Article{
-		Title:  title,
-		Lead:   fm.Lead,
-		Date:   fm.Date,
-		Status: fm.Status,
-		TOC:    toc,
-		Body:   template.HTML(out), //nolint:gosec // trusted, generated from local source
+		Title:    title,
+		Lead:     fm.Lead,
+		Date:     fm.Date,
+		Status:   fm.Status,
+		TOC:      toc,
+		Body:     template.HTML(out), //nolint:gosec // trusted, generated from local source
+		Words:    words,
+		ReadMins: readingMinutes(words),
 	}, nil
+}
+
+// countWords approximates the prose length from the Markdown source. Whitespace
+// tokens slightly over-count (markdown punctuation), which is fine for a "~N min".
+func countWords(b []byte) int { return len(bytes.Fields(b)) }
+
+// readingMinutes converts a word count to minutes at ~238 wpm (min 1).
+func readingMinutes(words int) int {
+	if words <= 0 {
+		return 0
+	}
+	m := (words + 237) / 238
+	if m < 1 {
+		m = 1
+	}
+	return m
+}
+
+// humanInt formats an int with thousands separators (e.g. 1840 -> "1,840").
+func humanInt(n int) string {
+	s := strconv.Itoa(n)
+	if n < 0 {
+		return s
+	}
+	var out []byte
+	for i, c := range []byte(s) {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			out = append(out, ',')
+		}
+		out = append(out, c)
+	}
+	return string(out)
 }
 
 // RenderDoc renders a Markdown document's source into the full page shell.
@@ -173,13 +213,15 @@ func (r *Renderer) RenderDoc(w io.Writer, slug string, src []byte) error {
 		art.Title = slug
 	}
 	page := docData{
-		Slug:   slug,
-		Title:  art.Title,
-		Date:   art.Date,
-		Status: art.Status,
-		Lead:   art.Lead,
-		TOC:    art.TOC,
-		Body:   art.Body,
+		Slug:       slug,
+		Title:      art.Title,
+		Date:       art.Date,
+		Status:     art.Status,
+		Lead:       art.Lead,
+		TOC:        art.TOC,
+		Body:       art.Body,
+		ReadMins:   art.ReadMins,
+		WordsHuman: humanInt(art.Words),
 	}
 	if err := r.tmpl.ExecuteTemplate(w, "shell.html.tmpl", page); err != nil {
 		return fmt.Errorf("render shell: %w", err)
