@@ -189,6 +189,8 @@ type ExportThread struct {
 
 type exportData struct {
 	Title       string
+	Date        string
+	Status      string
 	Lead        string
 	CSS         template.CSS
 	TOC         []TOCItem
@@ -202,6 +204,8 @@ type exportData struct {
 func (r *Renderer) ExportDoc(w io.Writer, art Article, css string, threads []ExportThread) error {
 	data := exportData{
 		Title:       art.Title,
+		Date:        art.Date,
+		Status:      art.Status,
 		Lead:        art.Lead,
 		CSS:         template.CSS(css), //nolint:gosec // our own embedded stylesheet
 		TOC:         art.TOC,

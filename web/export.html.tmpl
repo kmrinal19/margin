@@ -18,6 +18,7 @@
   </nav>
   <article>
     <h1 class="doc-title">{{.Title}}</h1>
+    {{if or .Status .Date}}<div class="dateline">{{with .Status}}<span class="status">{{.}}</span>{{end}}{{if and .Status .Date}}<span class="dot">·</span>{{end}}{{with .Date}}<time>{{.}}</time>{{end}}</div>{{end}}
     {{with .Lead}}<p class="lead">{{.}}</p>{{end}}
     {{.Body}}
     {{if .HasComments}}
