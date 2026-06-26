@@ -21,7 +21,8 @@ architecture decision changes, update `PRD.md` rather than silently diverging.
 | `golangci-lint run` | Lint (config: `.golangci.yml`) |
 | `./margin serve` | Serve → http://127.0.0.1:8848 |
 | `./margin docs` | List docs + open-comment counts |
-| `./margin comments <slug> --open --json` | Token-minimal open comments (agent) |
+| `./margin comments <slug> --open --json` | Token-minimal open comments (agent; `--full` adds thread history) |
+| `./margin reply <thread-id> --note "…"` | Reply without resolving (agent) |
 | `./margin resolve <thread-id> --note "…"` | Resolve a thread (agent) |
 
 ## Layout

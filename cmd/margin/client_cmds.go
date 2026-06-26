@@ -84,32 +84,57 @@ func cmdDocs(args []string) error {
 // compactThread is the token-minimal shape an agent consumes (Appendix C):
 // t=thread id, b=block id, q=exact quote, ctx=[prefix,suffix], c=latest comment,
 // s=status. The (b,q) pair lets the agent locate the span without re-reading the doc.
-type compactThread struct {
-	T        int64     `json:"t"`
-	B        string    `json:"b"`
-	Q        string    `json:"q"`
-	Ctx      [2]string `json:"ctx"`
-	C        string    `json:"c"`
-	S        string    `json:"s"`
-	Orphaned bool      `json:"orphaned,omitempty"`
+// With --full, msgs carries the whole thread (author + body) so the agent never
+// mistakes its own prior note for new human feedback, and qt/relocated expose a
+// multi-block tail and a drifted anchor.
+type compactMsg struct {
+	A string `json:"a"` // author: human | ai
+	B string `json:"b"` // body
 }
 
-func toCompact(threads []store.Thread) []compactThread {
+type compactThread struct {
+	T         int64        `json:"t"`
+	B         string       `json:"b"`
+	Q         string       `json:"q"`
+	Qt        string       `json:"qt,omitempty"` // multi-block tail quote
+	Ctx       [2]string    `json:"ctx"`
+	C         string       `json:"c"`
+	S         string       `json:"s"`
+	N         int          `json:"n,omitempty"`         // message count
+	Msgs      []compactMsg `json:"msgs,omitempty"`      // full history (--full)
+	Mine      bool         `json:"mine,omitempty"`      // latest message is the agent's own
+	Relocated bool         `json:"relocated,omitempty"` // anchor was fuzzy-healed (verify the span)
+	Orphaned  bool         `json:"orphaned,omitempty"`
+}
+
+func toCompact(threads []store.Thread, full bool) []compactThread {
 	out := make([]compactThread, 0, len(threads))
 	for _, t := range threads {
-		latest := ""
+		latest, lastAuthor := "", ""
 		if n := len(t.Comments); n > 0 {
 			latest = t.Comments[n-1].Body
+			lastAuthor = t.Comments[n-1].Author
 		}
-		out = append(out, compactThread{
-			T:        t.ID,
-			B:        t.Anchor.BlockID,
-			Q:        t.Anchor.QuoteExact,
-			Ctx:      [2]string{t.Anchor.QuotePrefix, t.Anchor.QuoteSuffix},
-			C:        latest,
-			S:        t.Status,
-			Orphaned: t.Orphaned,
-		})
+		ct := compactThread{
+			T:         t.ID,
+			B:         t.Anchor.BlockID,
+			Q:         t.Anchor.QuoteExact,
+			Qt:        t.Anchor.QuoteTail,
+			Ctx:       [2]string{t.Anchor.QuotePrefix, t.Anchor.QuoteSuffix},
+			C:         latest,
+			S:         t.Status,
+			N:         len(t.Comments),
+			Mine:      lastAuthor == "ai",
+			Relocated: !t.Orphaned && t.Anchor.Confidence > 0 && t.Anchor.Confidence < 1,
+			Orphaned:  t.Orphaned,
+		}
+		if full {
+			ct.Msgs = make([]compactMsg, 0, len(t.Comments))
+			for _, m := range t.Comments {
+				ct.Msgs = append(ct.Msgs, compactMsg{A: m.Author, B: m.Body})
+			}
+		}
+		out = append(out, ct)
 	}
 	return out
 }
@@ -117,15 +142,17 @@ func toCompact(threads []store.Thread) []compactThread {
 func cmdComments(args []string) error {
 	fs := flag.NewFlagSet("comments", flag.ExitOnError)
 	server := fs.String("server", defaultServer, "margin server URL")
-	_ = fs.Bool("open", true, "only open threads (the default)")
+	open := fs.Bool("open", true, "only open threads (the default)")
 	all := fs.Bool("all", false, "include resolved threads")
 	asJSON := fs.Bool("json", false, "token-minimal JSON for an agent")
+	full := fs.Bool("full", false, "with --json: include full thread history (author + body)")
 	rest := parseArgs(fs, args)
 	if len(rest) < 1 {
-		return errors.New(`usage: margin comments <slug> [--all] [--json]`)
+		return errors.New(`usage: margin comments <slug> [--open|--all] [--json [--full]]`)
 	}
+	// --all includes resolved; --open=false also means "show all".
 	status := "open"
-	if *all {
+	if *all || !*open {
 		status = "all"
 	}
 
@@ -136,9 +163,30 @@ func cmdComments(args []string) error {
 		return err
 	}
 	if *asJSON {
-		return emitJSON(toCompact(threads))
+		return emitJSON(toCompact(threads, *full))
 	}
 	printThreads(threads, rest[0])
+	return nil
+}
+
+func cmdReply(args []string) error {
+	fs := flag.NewFlagSet("reply", flag.ExitOnError)
+	server := fs.String("server", defaultServer, "margin server URL")
+	note := fs.String("note", "", "reply body (posted as an 'ai' comment; thread stays open)")
+	rest := parseArgs(fs, args)
+	if len(rest) < 1 || *note == "" {
+		return errors.New(`usage: margin reply <thread-id> --note "…"`)
+	}
+	id, err := strconv.ParseInt(rest[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid thread id %q", rest[0])
+	}
+	ctx, stop := clientCtx()
+	defer stop()
+	if _, err := client.New(*server).Reply(ctx, id, "ai", *note); err != nil {
+		return err
+	}
+	fmt.Printf("replied to thread #%d\n", id)
 	return nil
 }
 

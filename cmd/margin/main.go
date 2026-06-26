@@ -30,6 +30,8 @@ func main() {
 		err = cmdResolve(os.Args[2:])
 	case "reopen":
 		err = cmdReopen(os.Args[2:])
+	case "reply":
+		err = cmdReply(os.Args[2:])
 	case "export":
 		err = cmdExport(os.Args[2:])
 	case "version", "-version", "--version":
@@ -56,7 +58,8 @@ func usage() {
 usage:
   margin serve    [--port 8848] [--host 127.0.0.1] [--docs ./docs] [--data ./data]
   margin docs                                  list docs + open-comment counts
-  margin comments <slug> [--open] [--json]     list comment threads (token-minimal with --json)
+  margin comments <slug> [--open|--all] [--json [--full]]   list threads (token-minimal with --json)
+  margin reply    <thread-id> --note "…"       reply without resolving (agent)
   margin resolve  <thread-id> [--note "…"]     resolve a thread (agent)
   margin reopen   <thread-id>                  reopen a resolved thread
   margin export   <slug> --inline              write a portable single-file HTML

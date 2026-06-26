@@ -101,6 +101,18 @@ func (c *Client) Comments(ctx context.Context, slug, status string) ([]store.Thr
 	return out.Threads, nil
 }
 
+// Reply posts a comment to a thread without changing its status (the agent
+// answering or pushing back without resolving). author is typically "ai".
+func (c *Client) Reply(ctx context.Context, threadID int64, author, body string) (store.Comment, error) {
+	var cm store.Comment
+	req := map[string]string{"author": author, "body": body}
+	path := fmt.Sprintf("/api/threads/%d/replies", threadID)
+	if err := c.do(ctx, http.MethodPost, path, req, &cm); err != nil {
+		return store.Comment{}, err
+	}
+	return cm, nil
+}
+
 // SetStatus resolves or reopens a thread, optionally posting a note first.
 func (c *Client) SetStatus(ctx context.Context, threadID int64, status, by, note string) (store.Thread, error) {
 	if status != store.StatusOpen && status != store.StatusResolved {
