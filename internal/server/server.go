@@ -141,11 +141,14 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		s.httpError(w, http.StatusInternalServerError)
 		return
 	}
-	if counts, err := s.st.OpenCounts(r.Context()); err != nil {
-		s.log.Warn("open counts", "err", err)
+	if counts, err := s.st.Counts(r.Context()); err != nil {
+		s.log.Warn("doc counts", "err", err)
 	} else {
 		for i := range docs {
-			docs[i].OpenCount = counts[docs[i].Slug]
+			c := counts[docs[i].Slug]
+			docs[i].OpenCount = c.Open
+			docs[i].ResolvedCount = c.Resolved
+			docs[i].OrphanCount = c.Orphaned
 		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -289,11 +292,16 @@ func (s *Server) listDocs() ([]render.DocInfo, error) {
 		if !validSlug(slug) {
 			continue
 		}
-		title := slug
+		info := render.DocInfo{Slug: slug, Title: slug}
 		if src, err := os.ReadFile(filepath.Join(s.cfg.DocsDir, e.Name())); err == nil {
-			title = s.rnd.DocMeta(slug, src).Title
+			m := s.rnd.DocMeta(slug, src)
+			info.Title = m.Title
+			info.Date = m.Date
+			info.Status = m.Status
+			info.Excerpt = m.Excerpt
+			info.ReadMins = m.ReadMins
 		}
-		docs = append(docs, render.DocInfo{Slug: slug, Title: title})
+		docs = append(docs, info)
 	}
 	sort.Slice(docs, func(i, j int) bool { return docs[i].Slug < docs[j].Slug })
 	return docs, nil

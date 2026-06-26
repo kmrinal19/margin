@@ -8,10 +8,12 @@ import (
 	"html/template"
 	"io"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/kmrinal19/margin/web"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer"
@@ -29,17 +31,26 @@ type TOCItem struct {
 
 // DocInfo summarizes a document for the index page and the docs API.
 type DocInfo struct {
-	Slug      string `json:"slug"`
-	Title     string `json:"title"`
-	OpenCount int    `json:"open_count"`
+	Slug          string `json:"slug"`
+	Title         string `json:"title"`
+	OpenCount     int    `json:"open_count"`
+	ResolvedCount int    `json:"resolved_count,omitempty"`
+	OrphanCount   int    `json:"orphan_count,omitempty"`
+	Date          string `json:"date,omitempty"`
+	Status        string `json:"status,omitempty"`
+	Excerpt       string `json:"-"`
+	ReadMins      int    `json:"-"`
 }
 
-// Meta is the lightweight metadata of a document (title + front matter),
-// extracted without a full render.
+// Meta is the lightweight metadata of a document (title + front matter + a short
+// excerpt and reading length), extracted without a full HTML render.
 type Meta struct {
-	Title  string
-	Date   string
-	Status string
+	Title    string
+	Date     string
+	Status   string
+	Excerpt  string
+	Words    int
+	ReadMins int
 }
 
 // Renderer renders the index and document pages from embedded templates.
@@ -281,16 +292,47 @@ func (r *Renderer) ExportDoc(w io.Writer, art Article, css string, threads []Exp
 // DocMeta extracts a document's title/date/status without a full render.
 func (r *Renderer) DocMeta(slug string, src []byte) Meta {
 	fm, body := splitFrontMatter(src)
+	doc := r.md.Parser().Parse(text.NewReader(body))
 	title := fm.Title
-	if title == "" {
-		if doc := r.md.Parser().Parse(text.NewReader(body)); doc != nil {
-			if h := firstHeading(doc, 1); h != nil {
-				title = nodeText(h, body)
-			}
+	if title == "" && doc != nil {
+		if h := firstHeading(doc, 1); h != nil {
+			title = nodeText(h, body)
 		}
 	}
 	if title == "" {
 		title = slug
 	}
-	return Meta{Title: title, Date: fm.Date, Status: fm.Status}
+	excerpt := fm.Lead
+	if excerpt == "" && doc != nil {
+		excerpt = firstParagraphText(doc, body)
+	}
+	words := countWords(body)
+	return Meta{
+		Title:    title,
+		Date:     fm.Date,
+		Status:   fm.Status,
+		Excerpt:  truncateWords(excerpt, 26),
+		Words:    words,
+		ReadMins: readingMinutes(words),
+	}
+}
+
+// firstParagraphText returns the text of the first paragraph in the document,
+// skipping headings — a sensible excerpt for the index when there's no lead.
+func firstParagraphText(doc ast.Node, src []byte) string {
+	for n := doc.FirstChild(); n != nil; n = n.NextSibling() {
+		if n.Kind() == ast.KindParagraph {
+			return nodeText(n, src)
+		}
+	}
+	return ""
+}
+
+// truncateWords clamps s to at most n words, appending an ellipsis when cut.
+func truncateWords(s string, n int) string {
+	f := strings.Fields(s)
+	if len(f) <= n {
+		return strings.Join(f, " ")
+	}
+	return strings.Join(f[:n], " ") + "…"
 }

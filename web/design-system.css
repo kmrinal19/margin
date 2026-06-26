@@ -277,18 +277,33 @@ tbody tr:hover{background:var(--bg-tint);}
 
 blockquote{margin:var(--s5) 0;padding:var(--s2) var(--s5);border-left:2px solid var(--accent);color:var(--muted);font-style:italic;font-size:1.1rem;}
 
-/* ── DOC INDEX ──────────────────────────────────────────────────── */
-.index{max-width:var(--measure);margin:0 auto;}
+/* ── DOC INDEX — "the desk" ─────────────────────────────────────── */
+.index{max-width:46rem;margin:0 auto;padding:var(--s8) var(--s6);}
 .index h1{font-size:var(--fs-display);margin-top:var(--s4);}
 .doc-list{list-style:none;padding:0;margin:var(--s6) 0;}
 .doc-list>li::before{content:none;}
 .doc-list li{margin:0;padding:0;}
-.doc-list a{display:flex;align-items:baseline;gap:var(--s4);padding:var(--s4) var(--s2);border-bottom:1px solid var(--border);text-decoration:none;color:var(--ink);transition:padding-left .15s, color .15s;}
-.doc-list a:hover{padding-left:var(--s3);color:var(--accent);}
-.doc-list .d-title{font-family:var(--serif);font-weight:600;font-size:1.25rem;}
-.doc-list .d-slug{color:var(--faint);font-family:var(--mono);font-size:var(--fs-sm);}
-.doc-list .spacer{flex:1;}
-.empty{color:var(--muted);font-style:italic;border:1px dashed var(--border-strong);border-radius:var(--radius);padding:var(--s6);text-align:center;}
+.doc-list a{position:relative;display:flex;align-items:flex-start;gap:var(--s4);padding:var(--s4) var(--s2) var(--s4) var(--s5);
+  border-bottom:1px solid var(--border);text-decoration:none;color:var(--ink);transition:transform .16s ease-out, background .16s;}
+/* a red pencil "¶" that slides in on hover — the manuscript gets picked up */
+.doc-list a::before{content:"¶";position:absolute;left:0;top:var(--s4);color:var(--accent);opacity:0;transform:translateX(-.3rem);
+  font-size:1.1rem;transition:opacity .16s, transform .16s ease-out;}
+.doc-list a:hover,.doc-list a:focus-visible{background:var(--bg-tint);transform:translateX(.2rem);}
+.doc-list a:hover::before,.doc-list a:focus-visible::before{opacity:1;transform:translateX(0);}
+.doc-list .d-main{display:flex;flex-direction:column;gap:.25rem;min-width:0;flex:1;}
+.doc-list .d-title{font-family:var(--serif);font-weight:600;font-size:1.3rem;line-height:1.2;}
+.doc-list .d-excerpt{color:var(--muted);font-size:var(--fs-sm);line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.doc-list .d-meta{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s3);font-family:var(--sans);font-size:var(--fs-xs);
+  text-transform:uppercase;letter-spacing:var(--track-label);color:var(--faint);margin-top:.15rem;}
+.doc-list .d-meta time,.doc-list .d-read{font-variant-numeric:tabular-nums lining-nums;}
+.doc-list .d-status{color:var(--accent);font-weight:700;}
+.doc-list .d-counts{display:flex;flex-direction:column;align-items:flex-end;gap:var(--s2);flex:0 0 auto;padding-top:.2rem;}
+.badge.orphan{background:var(--warn-bg);color:var(--warn-fg);border-color:var(--warn-bd);}
+.badge.done{background:transparent;color:var(--good-fg);border-color:var(--good-bd);}
+.empty{color:var(--muted);border:1px dashed var(--border-strong);border-radius:var(--radius);padding:var(--s8) var(--s6);text-align:center;margin-top:var(--s7);}
+.empty .empty-mark{font-size:2rem;color:var(--accent);opacity:.7;margin-bottom:var(--s3);}
+.empty .empty-head{font-family:var(--serif);font-style:italic;font-size:1.4rem;color:var(--ink);margin:0 0 var(--s2);}
+.empty code{font-family:var(--mono);font-size:.9em;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.08em .4em;}
 
 /* ── ERROR PAGE — 404 / 500 in the manuscript voice ────────────────── */
 .errorpage{max-width:var(--measure);margin:18vh auto 0;padding:0 var(--s6);text-align:center;}

@@ -313,6 +313,41 @@ func (s *Store) UpdateAnchorResolutions(ctx context.Context, rows []HealRow) err
 	return tx.Commit()
 }
 
+// DocCounts is a doc's review tally for the index.
+type DocCounts struct {
+	Open     int // live, un-orphaned, unresolved
+	Resolved int
+	Orphaned int // open but the anchor drifted — the "doc changed under me" signal
+}
+
+// Counts returns per-slug review tallies in one query. Orphan state is whatever
+// the last re-anchor pass persisted (refreshed when a doc's comments are fetched),
+// which is an acceptable freshness for an at-a-glance index.
+func (s *Store) Counts(ctx context.Context) (map[string]DocCounts, error) {
+	rows, err := s.reader.QueryContext(ctx,
+		`SELECT d.slug,
+		   SUM(CASE WHEN t.status='open' AND t.orphaned=0 THEN 1 ELSE 0 END),
+		   SUM(CASE WHEN t.status='resolved' THEN 1 ELSE 0 END),
+		   SUM(CASE WHEN t.status='open' AND t.orphaned=1 THEN 1 ELSE 0 END)
+		 FROM comment_thread t JOIN doc d ON d.id = t.doc_id GROUP BY d.slug`)
+	if err != nil {
+		return nil, fmt.Errorf("doc counts: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]DocCounts{}
+	for rows.Next() {
+		var (
+			slug string
+			c    DocCounts
+		)
+		if err := rows.Scan(&slug, &c.Open, &c.Resolved, &c.Orphaned); err != nil {
+			return nil, fmt.Errorf("scan counts: %w", err)
+		}
+		out[slug] = c
+	}
+	return out, rows.Err()
+}
+
 // OpenCounts returns the number of open threads per doc slug.
 func (s *Store) OpenCounts(ctx context.Context) (map[string]int, error) {
 	rows, err := s.reader.QueryContext(ctx,
