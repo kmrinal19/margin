@@ -122,6 +122,10 @@ h2{font-size:var(--fs-h2);margin-top:var(--s8);padding-bottom:var(--s2);border-b
 h2::before{content:"";position:absolute;left:-1.1rem;top:.12em;width:.28rem;height:1.05em;background:var(--accent);opacity:.85;border-radius:1px;} /* margin tick */
 h3{font-size:var(--fs-h3);} h4{font-size:var(--fs-base);color:var(--muted);font-style:italic;}
 .doc-title{font-size:var(--fs-display);line-height:1.08;letter-spacing:-.02em;margin:0 0 var(--s4);font-weight:650;}
+.dateline{font-family:var(--sans);font-size:var(--fs-xs);color:var(--faint);text-transform:uppercase;letter-spacing:var(--track-label);display:flex;gap:var(--s3);align-items:center;margin:0 0 var(--s5);}
+.dateline .status{color:var(--accent);font-weight:700;}
+.dateline .dot{color:var(--border-strong);}
+.dateline time{font-variant-numeric:oldstyle-nums;}
 .lead{font-size:1.32rem;line-height:1.5;color:var(--muted);font-style:italic;margin:0 0 var(--s6);padding-bottom:var(--s5);border-bottom:1px solid var(--border);}
 :target{animation:flash 1.8s ease-out;}
 @keyframes flash{0%,15%{background:var(--accent-soft);box-shadow:0 0 0 .35rem var(--accent-soft);}100%{background:transparent;box-shadow:0 0 0 .35rem transparent;}}
