@@ -58,4 +58,20 @@ func blockID(text string) string {
 - Token-efficient: an agent fetches a compact list of open comments instead of
   re-reading the whole document.
 
+## Footnotes and definitions
+
+Footnotes render as numbered endnotes with a back-reference,[^anchor] and
+definition lists get a proper `<dl>`:
+
+Anchor
+: A comment's attachment to a span of text — a block id, a quoted exact, and a
+  block-relative offset.
+
+Orphan
+: An anchor whose text can no longer be found with confidence. Surfaced in the
+  sidebar, never silently mis-attached.
+
+[^anchor]: A first-party goldmark extension — no new dependency, still a single
+static binary.
+
 > "Prefer an honest orphan over a confident mis-anchor."

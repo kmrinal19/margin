@@ -58,7 +58,9 @@ func New() (*Renderer, error) {
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}
 	md := goldmark.New(
-		goldmark.WithExtensions(extension.GFM, &calloutExtension{}),
+		// GFM (tables/strikethrough/linkify/tasklist) + footnotes + definition lists —
+		// all first-party goldmark extensions, no new external deps. RFCs use footnotes.
+		goldmark.WithExtensions(extension.GFM, extension.Footnote, extension.DefinitionList, &calloutExtension{}),
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),
 			parser.WithASTTransformers(util.Prioritized(blockIDTransformer{}, 100)),

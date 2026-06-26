@@ -209,18 +209,52 @@ hr::before{content:"❧";color:var(--accent);font-size:1.1rem;opacity:.7;} /* fl
 
 code,kbd,pre,samp{font-family:var(--mono);}
 p code,li code,td code{font-size:.85em;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.08em .38em;color:var(--ink);}
-pre{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--border-strong);border-radius:var(--radius);
+pre{position:relative;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--border-strong);border-radius:var(--radius);
   padding:var(--s4) var(--s5);overflow-x:auto;font-size:.92rem;line-height:1.6;tab-size:2;margin:0 0 var(--s5);box-shadow:var(--shadow);}
 pre code{background:none;border:0;padding:0;font-size:inherit;color:var(--ink);}
+/* code block: a faint language label at rest; the Copy button takes its place on hover */
+pre[data-lang]::before{content:attr(data-lang);position:absolute;top:.5rem;right:.75rem;
+  font-family:var(--sans);font-size:var(--fs-xs);font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);pointer-events:none;transition:opacity .12s;}
+pre:hover[data-lang]::before,pre:focus-within[data-lang]::before{opacity:0;}
+.code-copy{position:absolute;top:.35rem;right:.4rem;z-index:1;opacity:0;
+  font-family:var(--sans);font-size:var(--fs-xs);font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+  background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.2em .6em;cursor:pointer;transition:opacity .12s,color .12s,border-color .12s;}
+pre:hover .code-copy,pre:focus-within .code-copy,.code-copy:focus-visible{opacity:1;}
+.code-copy:hover{color:var(--accent);border-color:var(--accent);}
+.code-copy.ok{color:var(--good-fg);border-color:var(--good-fg);opacity:1;}
 kbd{font-family:var(--mono);font-size:.8em;background:var(--surface-2);border:1px solid var(--border-strong);border-bottom-width:2px;border-radius:var(--radius-sm);padding:.1em .4em;}
 
-.callout{border:1px solid var(--border);border-left:3px solid var(--border-strong);border-radius:var(--radius);padding:var(--s4) var(--s5);margin:var(--s5) 0;background:var(--surface);}
-.callout .c-title{font-family:var(--sans);font-weight:700;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:var(--track-label);margin-bottom:var(--s2);}
+/* inset rail (box-shadow) instead of border-left so the rail follows the rounded corners */
+.callout{position:relative;border:1px solid var(--border);border-radius:var(--radius);padding:var(--s4) var(--s5);margin:var(--s5) 0;background:var(--surface);box-shadow:inset 3px 0 0 var(--border-strong);}
+.callout .c-title{display:flex;align-items:center;gap:.5em;font-family:var(--sans);font-weight:700;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:var(--track-label);margin-bottom:var(--s2);}
+/* a monochrome type glyph in a ring — scannable, and not colour-alone (WCAG 1.4.1) */
+.callout .c-title::before{content:"";flex:0 0 auto;width:1.25em;height:1.25em;border:1.5px solid currentColor;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.72em;line-height:1;}
+.callout.info .c-title::before,.callout.note .c-title::before{content:"i";font-style:italic;}
+.callout.good .c-title::before{content:"✓";}
+.callout.warn .c-title::before{content:"!";}
+.callout.danger .c-title::before{content:"✕";}
 .callout p:last-child{margin-bottom:0;}
-.callout.info{border-left-color:var(--info-fg);background:var(--info-bg);} .callout.info .c-title{color:var(--info-fg);}
-.callout.good{border-left-color:var(--good-fg);background:var(--good-bg);} .callout.good .c-title{color:var(--good-fg);}
-.callout.warn{border-left-color:var(--warn-fg);background:var(--warn-bg);} .callout.warn .c-title{color:var(--warn-fg);}
-.callout.danger{border-left-color:var(--danger-fg);background:var(--danger-bg);} .callout.danger .c-title{color:var(--danger-fg);}
+.callout.info{box-shadow:inset 3px 0 0 var(--info-fg);background:var(--info-bg);} .callout.info .c-title{color:var(--info-fg);}
+.callout.good{box-shadow:inset 3px 0 0 var(--good-fg);background:var(--good-bg);} .callout.good .c-title{color:var(--good-fg);}
+.callout.warn{box-shadow:inset 3px 0 0 var(--warn-fg);background:var(--warn-bg);} .callout.warn .c-title{color:var(--warn-fg);}
+.callout.danger{box-shadow:inset 3px 0 0 var(--danger-fg);background:var(--danger-bg);} .callout.danger .c-title{color:var(--danger-fg);}
+
+/* definition lists */
+dl{margin:0 0 var(--s5);}
+dt{font-weight:700;color:var(--ink);margin-top:var(--s3);}
+dt:first-child{margin-top:0;}
+dd{margin:.15em 0 0 var(--s5);color:var(--muted);}
+
+/* footnotes — a quiet endnotes section, the ref a small superscript link */
+sup[id^="fnref"],.footnote-ref{font-family:var(--mono);font-size:.7em;}
+.footnote-ref{text-decoration:none;padding:0 .15em;}
+.footnotes{margin-top:var(--s7);padding-top:var(--s4);font-size:var(--fs-sm);color:var(--muted);border-top:1px solid var(--border);}
+.footnotes hr{display:none;} /* the section already has a border-top */
+.footnotes ol{padding-left:var(--s5);}
+.footnotes li{margin:var(--s2) 0;}
+.footnotes li::marker{color:var(--faint);font-family:var(--mono);font-size:.85em;}
+.footnote-backref{text-decoration:none;margin-left:.35em;color:var(--accent);}
 
 .table-wrap{overflow-x:auto;margin:0 0 var(--s5);}
 table{border-collapse:collapse;width:100%;font-size:.95rem;}

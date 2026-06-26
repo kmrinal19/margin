@@ -108,6 +108,24 @@
     });
     h.appendChild(a);
   });
+  // copy-to-clipboard button on each code block (revealed on hover/focus)
+  if (navigator.clipboard) {
+    document.querySelectorAll("article pre").forEach(function (pre) {
+      var btn = document.createElement("button");
+      btn.className = "code-copy";
+      btn.type = "button";
+      btn.textContent = "Copy";
+      btn.setAttribute("aria-label", "Copy code to clipboard");
+      btn.addEventListener("click", function () {
+        var code = pre.querySelector("code");
+        navigator.clipboard.writeText((code || pre).innerText).then(function () {
+          btn.textContent = "Copied"; btn.classList.add("ok");
+          setTimeout(function () { btn.textContent = "Copy"; btn.classList.remove("ok"); }, 1600);
+        });
+      });
+      pre.appendChild(btn);
+    });
+  }
 })();
 </script>
 <div id="mg-toasts" aria-live="polite" aria-atomic="false"></div>
