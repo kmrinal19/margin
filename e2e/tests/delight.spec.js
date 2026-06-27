@@ -89,3 +89,40 @@ test("a comment whose anchor relocates renders a tentative cue", async ({ page }
   await expect(page.locator("mark.mg-hl.tentative").first()).toBeVisible({ timeout: 7000 });
   await expect(page.locator(".mg-tentative").first()).toContainText(/moved|relocated/i);
 });
+
+test("document-level note: header button creates an unanchored note in its own group", async ({ page }) => {
+  await page.goto("/doc/" + slug);
+  // open the centered composer from the masthead "＋ Note" button
+  await page.locator("#mg-docnote").click();
+  const composer = page.locator("#mg-composer[role='dialog']");
+  await expect(composer).toBeVisible();
+  await expect(composer.locator(".mg-doclabel")).toContainText(/On this document/i);
+  await composer.locator("textarea").fill("Overall this needs a security section before we ship.");
+  await composer.getByRole("button", { name: "Add note", exact: true }).click();
+  await expect(page.locator("#mg-composer")).toHaveCount(0);
+
+  // it lands in the "On the document" group, counts as open, and paints NO highlight/marker
+  await expect(page.locator(".mg-group", { hasText: "On the document" })).toBeVisible();
+  const docCard = page.locator(".mg-card.doc");
+  await expect(docCard).toHaveCount(1);
+  await expect(docCard.locator(".mg-body")).toContainText("security section");
+  await expect(page.locator('.mg-tab[data-filter="open"] .chip')).toHaveText("1");
+  await expect(page.locator("mark.mg-hl")).toHaveCount(0);
+  await expect(page.locator(".mg-marker")).toHaveCount(0);
+
+  // it resolves like any thread and survives a reload (persisted, never orphaned)
+  await docCard.getByRole("button", { name: "Resolve" }).click();
+  await expect(page.locator('.mg-tab[data-filter="resolved"] .chip')).toHaveText("1");
+  await expect(page.locator('.mg-tab[data-filter="orphaned"]')).toBeHidden();
+  await page.reload();
+  await page.locator("#mg-toggle").click();
+  await page.locator('.mg-tab[data-filter="resolved"]').click();
+  await expect(page.locator(".mg-card.doc .mg-body")).toContainText("security section");
+});
+
+test("pressing c with nothing selected opens the document-note composer", async ({ page }) => {
+  await page.goto("/doc/" + slug);
+  await page.locator("h1.doc-title").click(); // focus out of any field, no selection
+  await page.keyboard.press("c");
+  await expect(page.locator("#mg-composer[role='dialog'] .mg-doclabel")).toContainText(/On this document/i);
+});

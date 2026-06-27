@@ -86,7 +86,7 @@ func reqJSON(t *testing.T, method, url string, body any) (int, []byte) {
 func createComment(t *testing.T, ts *httptest.Server, rnd *render.Renderer, sub, body string) store.Thread {
 	t.Helper()
 	bid := blockIDFor(t, rnd, sub)
-	status, data := reqJSON(t, "POST", ts.URL+"/api/docs/guide/comments", map[string]any{
+	status, data := reqJSON(t, "POST", ts.URL+"/api/comments/guide", map[string]any{
 		"anchor": map[string]any{
 			"block_id":     bid,
 			"quote_exact":  sub,
@@ -110,7 +110,7 @@ func createComment(t *testing.T, ts *httptest.Server, rnd *render.Renderer, sub,
 
 func listThreads(t *testing.T, ts *httptest.Server, status string) []store.Thread {
 	t.Helper()
-	code, data := reqJSON(t, "GET", ts.URL+"/api/docs/guide/comments?status="+status, nil)
+	code, data := reqJSON(t, "GET", ts.URL+"/api/comments/guide?status="+status, nil)
 	if code != http.StatusOK {
 		t.Fatalf("list: status %d", code)
 	}
@@ -132,6 +132,147 @@ func TestAPICreateAndList(t *testing.T) {
 	got := listThreads(t, ts, "open")
 	if len(got) != 1 || got[0].Comments[0].Body != "When exactly?" {
 		t.Fatalf("list = %+v", got)
+	}
+}
+
+func TestDocLevelComment(t *testing.T) {
+	ts, _, _ := newTestServer(t)
+
+	// scope=doc creates a note with no text anchor
+	code, data := reqJSON(t, "POST", ts.URL+"/api/comments/guide", map[string]any{
+		"scope": "doc", "body": "Overall: needs a security section.", "author": "human",
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("create doc note: %d: %s", code, data)
+	}
+	var th store.Thread
+	if err := json.Unmarshal(data, &th); err != nil {
+		t.Fatal(err)
+	}
+	if th.Anchor.BlockID != store.DocBlockID || !th.Anchor.IsDoc() {
+		t.Errorf("doc note anchor = %+v, want block_id=%q", th.Anchor, store.DocBlockID)
+	}
+	if th.Anchor.QuoteExact != "" {
+		t.Errorf("doc note should have no quote, got %q", th.Anchor.QuoteExact)
+	}
+
+	// it never orphans, even though it has no locatable span in the source
+	got := listThreads(t, ts, "all")
+	if len(got) != 1 {
+		t.Fatalf("want 1 thread, got %d", len(got))
+	}
+	if got[0].Orphaned {
+		t.Error("a document-level note must never orphan")
+	}
+	if !got[0].Anchor.IsDoc() {
+		t.Error("listed thread should still be doc-level")
+	}
+
+	// an anchored create still requires a quote
+	bad, _ := reqJSON(t, "POST", ts.URL+"/api/comments/guide", map[string]any{
+		"body": "no anchor", "author": "human",
+	})
+	if bad != http.StatusBadRequest {
+		t.Errorf("anchored create without a quote = %d, want 400", bad)
+	}
+}
+
+func TestValidSlugNested(t *testing.T) {
+	t.Parallel()
+	ok := []string{"welcome", "payments/refunds", "a/b/c", "auth/oauth-flow"}
+	bad := []string{"", "/", "a/", "/a", "a//b", "../etc", "a/../b", "A/b", "a/.hidden", "a b"}
+	for _, s := range ok {
+		if !validSlug(s) {
+			t.Errorf("validSlug(%q) = false, want true", s)
+		}
+	}
+	for _, s := range bad {
+		if validSlug(s) {
+			t.Errorf("validSlug(%q) = true, want false", s)
+		}
+	}
+}
+
+func TestNestedDocsListedAndServed(t *testing.T) {
+	t.Parallel()
+	docs := t.TempDir()
+	data := t.TempDir()
+	must := func(p, body string) {
+		full := filepath.Join(docs, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	must("welcome.md", "# Welcome\n\nTop level.\n")
+	must("payments/refunds.md", "# Refunds\n\nRefunds go to the original method.\n")
+	must("payments/disputes/chargebacks.md", "# Chargebacks\n\nRepresentment flow.\n")
+
+	rnd, err := render.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(context.Background(), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	srv := New(Config{Host: "127.0.0.1", DocsDir: docs, DataDir: data},
+		slog.New(slog.NewTextHandler(io.Discard, nil)), rnd, st)
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+
+	// the recursive scan surfaces nested slugs
+	code, data2 := reqJSON(t, "GET", ts.URL+"/api/docs", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list docs: %d", code)
+	}
+	for _, want := range []string{`"payments/refunds"`, `"payments/disputes/chargebacks"`, `"welcome"`} {
+		if !strings.Contains(string(data2), want) {
+			t.Errorf("/api/docs missing slug %s", want)
+		}
+	}
+
+	// a nested doc page renders
+	resp, err := http.Get(ts.URL + "/doc/payments/disputes/chargebacks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("nested doc page = %d, want 200", resp.StatusCode)
+	}
+
+	// comments round-trip on a nested slug via the trailing-wildcard route
+	var bid string
+	for _, b := range rnd.Blocks([]byte("# Refunds\n\nRefunds go to the original method.\n")) {
+		if strings.Contains(b.Text, "original method") {
+			bid = b.ID
+		}
+	}
+	st2, _ := reqJSON(t, "POST", ts.URL+"/api/comments/payments/refunds", map[string]any{
+		"anchor": map[string]any{"block_id": bid, "quote_exact": "original method", "char_start": 0, "char_end": 15},
+		"body":   "which one?", "author": "human",
+	})
+	if st2 != http.StatusCreated {
+		t.Fatalf("create on nested slug = %d, want 201", st2)
+	}
+	lc, ld := reqJSON(t, "GET", ts.URL+"/api/comments/payments/refunds?status=all", nil)
+	if lc != http.StatusOK || !strings.Contains(string(ld), "which one?") {
+		t.Errorf("list on nested slug = %d, body %s", lc, ld)
+	}
+
+	// the index renders a collapsible folder tree
+	page, err := http.Get(ts.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pb, _ := io.ReadAll(page.Body)
+	_ = page.Body.Close()
+	if !strings.Contains(string(pb), `data-dir="payments"`) || !strings.Contains(string(pb), `data-dir="payments/disputes"`) {
+		t.Error("index is missing the nested folder tree")
 	}
 }
 

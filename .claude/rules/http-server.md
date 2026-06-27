@@ -7,8 +7,13 @@ paths:
 
 ## Router
 - stdlib `net/http` enhanced `ServeMux` (Go 1.22+). Method+path patterns:
-  `mux.HandleFunc("POST /api/docs/{slug}/comments", h)` + `r.PathValue("slug")`.
+  `mux.HandleFunc("POST /api/comments/{slug...}", h)` + `r.PathValue("slug")`.
   Covers all of §10 with zero deps. No chi/gin.
+- **Slugs are nested** (`payments/refunds`). A multi-segment `{slug...}` must be the
+  **last** path element, so per-doc comment routes are `/api/comments/{slug...}`, the
+  doc page is `/doc/{slug...}`, and `validSlug` checks each `/`-segment (rejecting `.`
+  so traversal is impossible). The catch-all 404 is `GET /` (scoped to GET so wrong-method
+  requests still get stdlib's 405+Allow).
 
 ## http.Server config (never the zero value)
 ```go

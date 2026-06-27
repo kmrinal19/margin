@@ -15,9 +15,13 @@
   <span class="crumb">{{.Title}}</span>
   <span class="spacer"></span>
   {{template "themetoggle" .}}
+  <button class="h-btn" id="mg-docnote" type="button" aria-label="Add a note on this document" title="Note on this document — a comment not tied to a selection">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M12 5v14M5 12h14"/></svg>
+    <span class="h-label">Note</span>
+  </button>
   <button class="h-btn" id="mg-toggle" type="button" aria-label="Toggle comments" aria-expanded="false" aria-controls="mg-sidebar" title="Comments — toggle sidebar">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-    Comments <span class="pill" id="mg-open-count" hidden>0</span>
+    <span class="h-label">Comments</span> <span class="pill" id="mg-open-count" hidden>0</span>
   </button>
 </header>
 <div class="layout">

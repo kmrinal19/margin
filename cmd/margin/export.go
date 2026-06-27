@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/kmrinal19/margin/internal/anchor"
 	"github.com/kmrinal19/margin/internal/render"
@@ -15,7 +16,21 @@ import (
 	"github.com/kmrinal19/margin/web"
 )
 
-var cliSlugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+var cliSlugSegRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+// validCLISlug accepts one or more "/"-joined segments (nested docs), rejecting
+// "." segments so a slug can never escape the docs directory.
+func validCLISlug(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, seg := range strings.Split(s, "/") {
+		if !cliSlugSegRe.MatchString(seg) {
+			return false
+		}
+	}
+	return true
+}
 
 // cmdExport writes a portable, server-free single-file HTML: the rendered doc
 // with inlined CSS plus a read-only snapshot of its review comments. It reads
@@ -31,11 +46,11 @@ func cmdExport(args []string) error {
 		return errors.New(`usage: margin export <slug> [--out file.html]`)
 	}
 	slug := rest[0]
-	if !cliSlugRe.MatchString(slug) {
+	if !validCLISlug(slug) {
 		return fmt.Errorf("invalid slug %q", slug)
 	}
 
-	src, err := os.ReadFile(filepath.Join(*docsDir, slug+".md"))
+	src, err := os.ReadFile(filepath.Join(*docsDir, filepath.FromSlash(slug)+".md"))
 	if err != nil {
 		return fmt.Errorf("read doc: %w", err)
 	}
@@ -84,7 +99,8 @@ func cmdExport(args []string) error {
 
 	outPath := *out
 	if outPath == "" {
-		outPath = slug + ".html"
+		// flatten a nested slug into a single filename (payments/refunds -> payments-refunds.html)
+		outPath = strings.ReplaceAll(slug, "/", "-") + ".html"
 	}
 	f, err := os.Create(outPath)
 	if err != nil {

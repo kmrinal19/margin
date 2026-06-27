@@ -303,6 +303,26 @@ blockquote{margin:var(--s5) 0;padding:var(--s2) var(--s5);border-left:2px solid 
 .doc-list .d-counts{display:flex;flex-direction:column;align-items:flex-end;gap:var(--s2);flex:0 0 auto;padding-top:.2rem;}
 .badge.orphan{background:var(--warn-bg);color:var(--warn-fg);border-color:var(--warn-bd);}
 .badge.done{background:transparent;color:var(--good-fg);border-color:var(--good-bd);}
+
+/* nested folder tree — collapsible <details> rows */
+.doc-tree{margin:var(--s6) 0;}
+.doc-tree .doc-list{margin:0;}
+details.dir{border-bottom:1px solid var(--border);}
+details.dir .dir-body{border-bottom:0;}
+/* indent each nested level so depth reads at a glance */
+details.dir .dir-body{padding-left:var(--s4);border-left:1px solid var(--border);margin-left:calc(var(--s3) + 2px);}
+.dir-head{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s2);cursor:pointer;list-style:none;
+  font-family:var(--sans);font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;letter-spacing:var(--track-label);color:var(--muted);}
+.dir-head::-webkit-details-marker{display:none;}
+/* a chevron that rotates open; reduced-motion users get the rotation instantly */
+.dir-head::before{content:"";width:.5rem;height:.5rem;flex:0 0 auto;border-right:1.5px solid var(--faint);border-bottom:1.5px solid var(--faint);
+  transform:rotate(-45deg);transition:transform .15s ease-out;margin-left:.15rem;}
+details.dir[open]>.dir-head::before{transform:rotate(45deg);}
+.dir-head:hover{color:var(--accent);} .dir-head:hover::before{border-color:var(--accent);}
+.dir-name{flex:1;}
+.dir-counts{display:flex;gap:var(--s2);}
+.dir-counts .badge{font-variant-numeric:tabular-nums lining-nums;}
+details.dir[open]>.dir-head .dir-counts{opacity:.55;} /* expanded → per-doc badges carry the detail */
 .empty{color:var(--muted);border:1px dashed var(--border-strong);border-radius:var(--radius);padding:var(--s8) var(--s6);text-align:center;margin-top:var(--s7);}
 .empty .empty-mark{font-size:2rem;color:var(--accent);opacity:.7;margin-bottom:var(--s3);}
 .empty .empty-head{font-family:var(--serif);font-style:italic;font-size:1.4rem;color:var(--ink);margin:0 0 var(--s2);}
@@ -408,6 +428,18 @@ body.sidebar-modal{overflow:hidden;overscroll-behavior:contain;}
 .mg-pop{position:absolute;z-index:56;width:340px;max-width:calc(100vw - var(--s5)*2);max-height:calc(100dvh - var(--s5)*2);overflow-y:auto;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);box-shadow:var(--shadow-pop);opacity:0;transform:translateY(4px);transition:opacity .13s ease-out, transform .13s ease-out;}
 .mg-pop.show{opacity:1;transform:none;}
 .mg-pop .mg-quote{font-family:var(--serif);font-style:italic;color:var(--muted);}
+/* centered variant — the document-level note composer (not anchored to a selection) */
+.mg-pop.center{position:fixed;left:50%;top:16vh;transform:translate(-50%,4px);}
+.mg-pop.center.show{transform:translate(-50%,0);}
+/* "On this document" label, used in the composer and on doc-level cards */
+.mg-doclabel{font-family:var(--sans);font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;letter-spacing:var(--track-label);
+  color:var(--accent);padding:var(--s3) var(--s3) 0;display:flex;align-items:center;gap:.4em;}
+.mg-doclabel::before{content:"❡";font-size:1.05em;} /* a capitulum — "on the document as a whole" */
+/* sidebar group divider ("On the document" / "Anchored") */
+.mg-group{font-family:var(--sans);font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;letter-spacing:var(--track-label);
+  color:var(--faint);display:flex;align-items:center;gap:var(--s3);margin:var(--s2) 0 calc(var(--s2) * -1);}
+.mg-group::after{content:"";flex:1;height:1px;background:var(--border);}
+.mg-card.doc{border-left-color:var(--accent);} /* doc-level notes share the editor's-mark accent rail */
 
 .mg-scrim{position:fixed;inset:0;background:rgba(34,25,15,.32);opacity:0;pointer-events:none;transition:opacity .2s;z-index:44;}
 .mg-scrim.show{opacity:1;pointer-events:auto;}
@@ -484,6 +516,8 @@ body.sidebar-modal{overflow:hidden;overscroll-behavior:contain;}
 @media (max-width:560px){
   .site-header{padding:0 var(--s4);gap:var(--s3);}
   .site-header .crumb{display:none;}
+  /* collapse header buttons to their icons (the labels are the width hog) */
+  #mg-docnote .h-label,#mg-toggle .h-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
 }
 @media print{
   /* force the light palette regardless of the active theme (match data-theme specificity) */

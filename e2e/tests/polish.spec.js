@@ -124,3 +124,43 @@ test("TOC scrollspy tracks the section being read (not just the next heading)", 
     fs.rmSync(f, { force: true });
   }
 });
+
+test("nested docs: the desk shows a collapsible folder tree, collapse persists", async ({ page }) => {
+  const dir = path.join(__dirname, "..", "..", "docs", "e2e-grp");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "alpha.md"), "---\ntitle: Group Alpha\n---\n\nFirst grouped doc.\n");
+  fs.writeFileSync(path.join(dir, "beta.md"), "---\ntitle: Group Beta\n---\n\nSecond grouped doc.\n");
+  try {
+    await page.goto("/");
+    const folder = page.locator('details.dir[data-dir="e2e-grp"]');
+    await expect(folder).toBeVisible();
+    // both grouped docs are listed under the folder, open by default
+    await expect(folder.locator('a[href="/doc/e2e-grp/alpha"]')).toBeVisible();
+    await expect(folder.locator('a[href="/doc/e2e-grp/beta"]')).toBeVisible();
+
+    // collapse it, reload — the folder stays collapsed (localStorage)
+    await folder.locator("summary.dir-head").click();
+    await expect(folder).not.toHaveAttribute("open", /.*/);
+    await page.reload();
+    await expect(page.locator('details.dir[data-dir="e2e-grp"]')).not.toHaveAttribute("open", /.*/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("nested docs: a comment round-trips on a nested-slug doc", async ({ page }) => {
+  const dir = path.join(__dirname, "..", "..", "docs", "e2e-nest");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "deep.md"), "## Deep\n\nThe nested document anchors comments just like a flat one.\n");
+  try {
+    await page.goto("/doc/e2e-nest/deep");
+    await addComment(page, "nested document anchors", "does this work nested?");
+    await expect(page.locator("mark.mg-hl").first()).toBeVisible();
+    await expect(page.locator('.mg-tab[data-filter="open"] .chip')).toHaveText("1");
+    // survives a reload (persisted under the nested slug)
+    await page.reload();
+    await expect(page.locator("mark.mg-hl").first()).toBeVisible();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
