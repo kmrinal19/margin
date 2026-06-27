@@ -593,3 +593,58 @@ func TestDocLevelResolveCycle(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+func TestEditComment(t *testing.T) {
+	ts, _, rnd := newTestServer(t)
+	th := createComment(t, ts, rnd, "main semester fee", "origial typo")
+	cid := th.Comments[0].ID
+
+	code, data := reqJSON(t, "PATCH", ts.URL+"/api/threads/"+itoa(th.ID)+"/comments/"+itoa(cid),
+		map[string]any{"body": "original, fixed"})
+	if code != http.StatusOK {
+		t.Fatalf("edit = %d: %s", code, data)
+	}
+	var got store.Thread
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Comments[0].Body != "original, fixed" {
+		t.Errorf("body = %q, want edited", got.Comments[0].Body)
+	}
+	if got.Comments[0].EditedAt == nil {
+		t.Error("edited_at should be set after an edit")
+	}
+
+	// empty body rejected; missing comment is 404
+	if c, _ := reqJSON(t, "PATCH", ts.URL+"/api/threads/"+itoa(th.ID)+"/comments/"+itoa(cid), map[string]any{"body": "  "}); c != http.StatusBadRequest {
+		t.Errorf("empty edit = %d, want 400", c)
+	}
+	if c, _ := reqJSON(t, "PATCH", ts.URL+"/api/threads/"+itoa(th.ID)+"/comments/9999", map[string]any{"body": "x"}); c != http.StatusNotFound {
+		t.Errorf("missing comment = %d, want 404", c)
+	}
+}
+
+func TestDeleteThread(t *testing.T) {
+	ts, _, rnd := newTestServer(t)
+	th := createComment(t, ts, rnd, "main semester fee", "kill this")
+	if n := len(listThreads(t, ts, "all")); n != 1 {
+		t.Fatalf("setup: want 1 thread, got %d", n)
+	}
+
+	// DELETE removes it (204) and it's gone, with its comments/anchor cascaded away
+	code, _ := reqJSON(t, "DELETE", ts.URL+"/api/threads/"+itoa(th.ID), nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("delete = %d, want 204", code)
+	}
+	if n := len(listThreads(t, ts, "all")); n != 0 {
+		t.Errorf("want 0 threads after delete, got %d", n)
+	}
+
+	// deleting again / a missing thread is 404
+	if code, _ := reqJSON(t, "DELETE", ts.URL+"/api/threads/"+itoa(th.ID), nil); code != http.StatusNotFound {
+		t.Errorf("re-delete = %d, want 404", code)
+	}
+	if code, _ := reqJSON(t, "DELETE", ts.URL+"/api/threads/abc", nil); code != http.StatusBadRequest {
+		t.Errorf("non-numeric id = %d, want 400", code)
+	}
+}

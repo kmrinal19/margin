@@ -100,6 +100,10 @@ func (s *Store) migrate(ctx context.Context) error {
 			return err
 		}
 	}
+	// edited_at: added when message editing landed (DBs predating it lack it).
+	if err := ensureColumn(ctx, tx, "comment", "edited_at", "TEXT"); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit migrate: %w", err)
 	}

@@ -24,6 +24,7 @@ architecture decision changes, update `PRD.md` rather than silently diverging.
 | `./margin comments <slug> --open --json` | Token-minimal open comments (agent; `--full` adds thread history) |
 | `./margin reply <thread-id> --note "…"` | Reply without resolving (agent) |
 | `./margin resolve <thread-id> --note "…"` | Resolve a thread (agent) |
+| `./margin delete <thread-id>` | Permanently delete a thread (human; not an MCP tool) |
 | `./margin mcp` | Stdio MCP server (agents); built into the same binary, runs over `internal/mcp` |
 | `./margin agent-setup` | Register `margin mcp` in each installed agent's own config (never the repo) |
 

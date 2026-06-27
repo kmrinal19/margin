@@ -596,14 +596,7 @@
 
     var msgs = el("div", { class: "mg-msgs" });
     (t.comments || []).forEach(function (m) {
-      var meta = el(
-        "div",
-        { class: "mg-meta" },
-        el("span", { class: "mg-author author-" + (m.author === "ai" ? "ai" : "human"), text: authorLabel(m.author) }),
-        m.author === "ai" ? el("span", { class: "mg-ai", text: "ai" }) : null,
-        timeEl(m.created_at)
-      );
-      msgs.appendChild(el("div", { class: "mg-msg" }, meta, el("div", { class: "mg-body", text: m.body })));
+      msgs.appendChild(messageEl(t, m));
     });
     c.appendChild(msgs);
 
@@ -624,7 +617,9 @@
         if (body) reply(t.id, body);
       },
     });
-    function syncSend() { send.disabled = input.value.trim() === ""; }
+    // the reply send button only appears once you're typing, so the resting footer
+    // stays uncluttered (Enter still sends; placeholder says so)
+    function syncSend() { send.hidden = input.value.trim() === ""; }
     function grow() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 200) + "px"; }
     input.addEventListener("input", function () { drafts[t.id] = input.value; syncSend(); grow(); });
     input.addEventListener("keydown", function (e) {
@@ -632,9 +627,101 @@
     });
     syncSend();
 
-    var copy = el("button", { class: "mg-btn ghost", type: "button", text: "Copy link", title: "Copy a link to this comment", onclick: function () { copyThreadLink(t.id); } });
-    c.appendChild(el("div", { class: "mg-reply" }, input, el("div", { class: "mg-card-foot" }, statusChip(t), spacer(), copy, actions(t), send)));
+    // Footer carries ONE prominent action (Resolve/Reopen); secondary + destructive
+    // actions live in a quiet overflow menu so the row never crowds. The menu panel
+    // is appended in-flow at the card's bottom (the card has overflow:hidden, so an
+    // absolute popover would clip) — it expands the card like a small drawer.
+    var more = moreMenu(t);
+    c.appendChild(el("div", { class: "mg-reply" }, input,
+      el("div", { class: "mg-card-foot" }, statusChip(t), spacer(), send, actions(t), more.btn)));
+    c.appendChild(more.menu);
     return c;
+  }
+
+  // messageEl renders one message with a hover "Edit" affordance → inline editor.
+  function messageEl(t, m) {
+    var bodyEl = el("div", { class: "mg-body", text: m.body });
+    var editBtn = el("button", { class: "mg-btn mg-edit", type: "button", text: "Edit", title: "Edit this message", onclick: function () { startEdit(); } });
+    var meta = el(
+      "div",
+      { class: "mg-meta" },
+      el("span", { class: "mg-author author-" + (m.author === "ai" ? "ai" : "human"), text: authorLabel(m.author) }),
+      m.author === "ai" ? el("span", { class: "mg-ai", text: "ai" }) : null,
+      timeEl(m.created_at),
+      m.edited_at ? el("span", { class: "mg-edited", text: "edited", title: "This message was edited" }) : null,
+      spacer(),
+      editBtn
+    );
+    var wrap = el("div", { class: "mg-msg" }, meta, bodyEl);
+
+    function startEdit() {
+      var ta = el("textarea", { class: "mg-input mg-grow", rows: "1", "aria-label": "Edit message" });
+      ta.value = m.body;
+      function grow() { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 240) + "px"; }
+      function save() { var b = ta.value.trim(); if (b && b !== m.body) editComment(t.id, m.id, b); else cancel(); }
+      function cancel() { editor.remove(); bodyEl.hidden = false; editBtn.hidden = false; editBtn.focus(); }
+      var saveBtn = el("button", { class: "mg-btn primary", type: "button", text: "Save", onclick: save });
+      var editor = el("div", { class: "mg-editor" }, ta, el("div", { class: "mg-editor-foot" }, spacer(),
+        el("button", { class: "mg-btn ghost", type: "button", text: "Cancel", onclick: cancel }), saveBtn));
+      ta.addEventListener("keydown", function (e) {
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); save(); }
+        else if (e.key === "Escape") { e.preventDefault(); cancel(); }
+      });
+      ta.addEventListener("input", grow);
+      bodyEl.hidden = true;
+      editBtn.hidden = true;
+      wrap.appendChild(editor);
+      ta.focus();
+      grow();
+    }
+    return wrap;
+  }
+
+  // moreMenu is the per-thread overflow: Copy link + a two-step Delete confirm.
+  // Returns { btn } for the footer and { menu } appended in-flow at the card bottom.
+  function moreMenu(t) {
+    var btn = el("button", {
+      class: "mg-btn ghost mg-more", type: "button", text: "⋯", title: "More actions",
+      "aria-label": "More actions", "aria-haspopup": "true", "aria-expanded": "false",
+    });
+    var menu = el("div", { class: "mg-menu", role: "menu" });
+
+    function onDocClick(e) { if (e.target !== btn && !menu.contains(e.target)) close(); }
+    function close() {
+      menu.classList.remove("open");
+      btn.setAttribute("aria-expanded", "false");
+      document.removeEventListener("click", onDocClick, true);
+      buildDefault();
+    }
+    function open() {
+      buildDefault();
+      menu.classList.add("open");
+      btn.setAttribute("aria-expanded", "true");
+      document.addEventListener("click", onDocClick, true);
+      var first = menu.querySelector("button"); if (first) first.focus();
+    }
+    btn.addEventListener("click", function (e) { e.stopPropagation(); menu.classList.contains("open") ? close() : open(); });
+    menu.addEventListener("keydown", function (e) { if (e.key === "Escape") { close(); btn.focus(); } });
+
+    function item(label, danger, onClick) {
+      return el("button", { class: "mg-menu-item" + (danger ? " danger" : ""), type: "button", role: "menuitem", text: label, onclick: onClick });
+    }
+    function buildDefault() {
+      menu.textContent = "";
+      menu.appendChild(item("Copy link", false, function () { copyThreadLink(t.id); close(); }));
+      menu.appendChild(item("Delete comment…", true, buildConfirm));
+    }
+    function buildConfirm() {
+      menu.textContent = "";
+      menu.appendChild(el("div", { class: "mg-menu-note", text: "Delete permanently? This can’t be undone." }));
+      var row = el("div", { class: "mg-menu-confirm" },
+        el("button", { class: "mg-btn ghost", type: "button", text: "Cancel", onclick: function () { close(); btn.focus(); } }),
+        el("button", { class: "mg-btn danger", type: "button", text: "Delete", onclick: function () { close(); deleteThread(t.id); } }));
+      menu.appendChild(row);
+      row.querySelector(".danger").focus();
+    }
+    buildDefault();
+    return { btn: btn, menu: menu };
   }
 
   // peek: emphasise a thread's highlight + gutter marker on card/marker hover
@@ -1142,6 +1229,29 @@
         });
       })
       .catch(function () { toast("Update failed — server unreachable.", { error: true }); })
+      .then(function () { done(key); });
+  }
+  function editComment(tid, cid, body) {
+    var key = "edit:" + cid;
+    if (!busy(key)) return;
+    postJSON("/api/threads/" + tid + "/comments/" + cid, { body: body }, "PATCH")
+      .then(function (r) {
+        if (!r.ok) { toast("Edit failed (server " + r.status + ").", { error: true }); return; }
+        return loadThen(function () { activeTid = tid; }).then(function () { toast("Edited"); });
+      })
+      .catch(function () { toast("Edit failed — server unreachable.", { error: true }); })
+      .then(function () { done(key); });
+  }
+  function deleteThread(tid) {
+    var key = "del:" + tid;
+    if (!busy(key)) return;
+    postJSON("/api/threads/" + tid, null, "DELETE")
+      .then(function (r) {
+        if (!r.ok) { toast("Delete failed (server " + r.status + ").", { error: true }); return; }
+        if (activeTid === tid) activeTid = null; // it's gone — drop the keyboard target
+        return loadThen().then(function () { toast("Comment deleted"); });
+      })
+      .catch(function () { toast("Delete failed — server unreachable.", { error: true }); })
       .then(function () { done(key); });
   }
 

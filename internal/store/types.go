@@ -50,10 +50,11 @@ func (a Anchor) IsDoc() bool { return a.BlockID == DocBlockID }
 
 // Comment is one message within a thread.
 type Comment struct {
-	ID        int64     `json:"id"`
-	Author    string    `json:"author"`
-	Body      string    `json:"body"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        int64      `json:"id"`
+	Author    string     `json:"author"`
+	Body      string     `json:"body"`
+	CreatedAt time.Time  `json:"created_at"`
+	EditedAt  *time.Time `json:"edited_at,omitempty"` // set when the body was edited
 }
 
 // Thread is a comment thread anchored to a span of a document.

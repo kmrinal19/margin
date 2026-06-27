@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS comment (
   thread_id  INTEGER NOT NULL REFERENCES comment_thread(id) ON DELETE CASCADE,
   author     TEXT NOT NULL,                     -- 'human' | LAN name | 'ai'
   body       TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  edited_at  TEXT                               -- ISO8601, set when the body is edited
 );
 CREATE INDEX IF NOT EXISTS ix_comment_thread ON comment(thread_id);
