@@ -49,6 +49,7 @@ type threadStore interface {
 	ListThreads(ctx context.Context, slug string, filter store.Filter) ([]store.Thread, error)
 	AddReply(ctx context.Context, threadID int64, author, body string) (store.Comment, error)
 	SetStatus(ctx context.Context, threadID int64, status, by, note string) error
+	EditComment(ctx context.Context, threadID, commentID int64, body string) error
 	DeleteThread(ctx context.Context, threadID int64) error
 	UpdateAnchorResolutions(ctx context.Context, rows []store.HealRow) error
 	Counts(ctx context.Context) (map[string]store.DocCounts, error)
@@ -112,6 +113,7 @@ func (s *Server) buildHandler() http.Handler {
 	mux.HandleFunc("POST /api/comments/{slug...}", s.handleCreateComment)
 	mux.HandleFunc("POST /api/threads/{id}/replies", s.handleReply)
 	mux.HandleFunc("PATCH /api/threads/{id}", s.handlePatchThread)
+	mux.HandleFunc("PATCH /api/threads/{tid}/comments/{cid}", s.handleEditComment)
 	mux.HandleFunc("DELETE /api/threads/{id}", s.handleDeleteThread)
 
 	if s.cfg.Debug {

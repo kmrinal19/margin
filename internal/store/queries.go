@@ -180,7 +180,7 @@ func (s *Store) loadComments(ctx context.Context, ids []int64) (map[int64][]Comm
 		ph[i] = "?"
 		args[i] = id
 	}
-	q := `SELECT thread_id, id, author, body, created_at FROM comment
+	q := `SELECT thread_id, id, author, body, created_at, edited_at FROM comment
 		WHERE thread_id IN (` + strings.Join(ph, ",") + `) ORDER BY id`
 	rows, err := s.reader.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -192,11 +192,16 @@ func (s *Store) loadComments(ctx context.Context, ids []int64) (map[int64][]Comm
 			tid     int64
 			c       Comment
 			created string
+			edited  sql.NullString
 		)
-		if err := rows.Scan(&tid, &c.ID, &c.Author, &c.Body, &created); err != nil {
+		if err := rows.Scan(&tid, &c.ID, &c.Author, &c.Body, &created, &edited); err != nil {
 			return nil, fmt.Errorf("scan comment: %w", err)
 		}
 		c.CreatedAt = parseTime(created)
+		if edited.Valid && edited.String != "" {
+			t := parseTime(edited.String)
+			c.EditedAt = &t
+		}
 		out[tid] = append(out[tid], c)
 	}
 	if err := rows.Err(); err != nil {
@@ -220,6 +225,21 @@ func (s *Store) AddReply(ctx context.Context, threadID int64, author, body strin
 	}
 	id, _ := res.LastInsertId()
 	return Comment{ID: id, Author: author, Body: body, CreatedAt: parseTime(ts)}, nil
+}
+
+// EditComment updates a comment's body (scoped to its thread for safety) and
+// stamps edited_at. Returns ErrNotFound if no such comment exists in that thread.
+func (s *Store) EditComment(ctx context.Context, threadID, commentID int64, body string) error {
+	res, err := s.writer.ExecContext(ctx,
+		`UPDATE comment SET body=?, edited_at=? WHERE id=? AND thread_id=?`,
+		body, nowStr(), commentID, threadID)
+	if err != nil {
+		return fmt.Errorf("edit comment: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // SetStatus resolves or reopens a thread, optionally recording a note as a reply

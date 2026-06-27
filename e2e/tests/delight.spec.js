@@ -127,22 +127,23 @@ test("pressing c with nothing selected opens the document-note composer", async 
   await expect(page.locator("#mg-composer[role='dialog'] .mg-doclabel")).toContainText(/On this document/i);
 });
 
-test("delete: a two-step confirm removes the comment and its highlight; Cancel aborts", async ({ page }) => {
+test("delete: the ⋯ menu's two-step confirm removes the comment; Cancel aborts", async ({ page }) => {
   await page.goto("/doc/" + slug);
   await comment(page, "first concern in detail", "delete me please");
   const card = page.locator(".mg-card").first();
   await expect(page.locator("mark.mg-hl")).toHaveCount(1);
 
-  // first click arms the confirm (does NOT delete)
-  await card.getByRole("button", { name: "Delete", exact: true }).click();
-  await expect(card.getByRole("button", { name: "Delete?", exact: true })).toBeVisible();
-  // Cancel aborts — comment still there
+  // open the overflow menu → Delete → Cancel aborts (comment stays)
+  await card.getByRole("button", { name: "More actions" }).click();
+  await card.getByRole("menuitem", { name: "Delete comment…" }).click();
+  await expect(card.getByText(/can.t be undone/i)).toBeVisible();
   await card.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.locator('.mg-tab[data-filter="open"] .chip')).toHaveText("1");
 
-  // arm again and confirm → comment + highlight gone, clean state
+  // open again → Delete → confirm → comment + highlight + marker gone
+  await card.getByRole("button", { name: "More actions" }).click();
+  await card.getByRole("menuitem", { name: "Delete comment…" }).click();
   await card.getByRole("button", { name: "Delete", exact: true }).click();
-  await card.getByRole("button", { name: "Delete?", exact: true }).click();
   await expect(page.locator(".mg-card")).toHaveCount(0);
   await expect(page.locator("mark.mg-hl")).toHaveCount(0);
   await expect(page.locator(".mg-marker")).toHaveCount(0);
@@ -150,4 +151,38 @@ test("delete: a two-step confirm removes the comment and its highlight; Cancel a
   // stays gone after reload (permanent)
   await page.reload();
   await expect(page.locator('.mg-tab[data-filter="open"] .chip')).toHaveText("0");
+});
+
+test("edit: a message can be edited inline and shows an 'edited' marker", async ({ page }) => {
+  await page.goto("/doc/" + slug);
+  await comment(page, "first concern in detail", "Typo: shoudl be 'should'");
+  const card = page.locator(".mg-card").first();
+  const msg = card.locator(".mg-msg").first();
+
+  await msg.hover();
+  await msg.getByRole("button", { name: "Edit", exact: true }).click();
+  const ta = msg.locator("textarea");
+  await expect(ta).toBeVisible();
+  await ta.fill("Fixed: should be 'should'.");
+  await msg.getByRole("button", { name: "Save", exact: true }).click();
+
+  // body updates, an 'edited' marker appears, count unchanged, survives reload
+  await expect(card.locator(".mg-body").first()).toHaveText("Fixed: should be 'should'.");
+  await expect(card.locator(".mg-edited")).toHaveCount(1);
+  await expect(page.locator('.mg-tab[data-filter="open"] .chip')).toHaveText("1");
+  await page.reload();
+  await expect(page.locator(".mg-card .mg-body").first()).toHaveText("Fixed: should be 'should'.");
+  await expect(page.locator(".mg-card .mg-edited")).toHaveCount(1);
+});
+
+test("edit: Cancel discards changes", async ({ page }) => {
+  await page.goto("/doc/" + slug);
+  await comment(page, "first concern in detail", "keep me as is");
+  const msg = page.locator(".mg-card .mg-msg").first();
+  await msg.hover();
+  await msg.getByRole("button", { name: "Edit", exact: true }).click();
+  await msg.locator("textarea").fill("this should be thrown away");
+  await msg.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.locator(".mg-card .mg-body").first()).toHaveText("keep me as is");
+  await expect(page.locator(".mg-card .mg-edited")).toHaveCount(0);
 });

@@ -184,6 +184,42 @@ func (s *Server) handlePatchThread(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, th)
 }
 
+// PATCH /api/threads/{tid}/comments/{cid}  -> edit a message's body
+func (s *Server) handleEditComment(w http.ResponseWriter, r *http.Request) {
+	tid, ok := parseID(r.PathValue("tid"))
+	cid, ok2 := parseID(r.PathValue("cid"))
+	if !ok || !ok2 {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		Body string `json:"body"`
+	}
+	if !s.decodeJSON(w, r, &req) {
+		return
+	}
+	req.Body = strings.TrimSpace(req.Body)
+	if req.Body == "" {
+		writeError(w, http.StatusBadRequest, "comment body is required")
+		return
+	}
+	if err := s.st.EditComment(r.Context(), tid, cid, req.Body); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "no such comment")
+			return
+		}
+		s.log.Error("edit comment", "thread", tid, "comment", cid, "err", err)
+		writeError(w, http.StatusInternalServerError, "could not edit comment")
+		return
+	}
+	th, err := s.st.GetThread(r.Context(), tid)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "edited, but could not reload thread")
+		return
+	}
+	writeJSON(w, http.StatusOK, th)
+}
+
 // DELETE /api/threads/{id}  -> permanently remove a thread (+ its comments/anchor)
 func (s *Server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(r.PathValue("id"))
