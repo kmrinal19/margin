@@ -556,7 +556,7 @@ body.sidebar-modal{overflow:hidden;overscroll-behavior:contain;}
   body::before{display:none;}
   #progress,.site-header,.toc,.mg-sidebar,.mg-marker,.mg-add,.mg-gutter,.mg-scrim,.mg-pop,.mg-toast,#mg-toasts,.mg-dlmenu{display:none!important;}
   .layout{display:block;max-width:none;padding:0;} article{max-width:none;}
-  mark.mg-hl{background:none;border-bottom:1px solid #999;}
+  mark.mg-hl{background:none!important;border:0!important;color:inherit!important;} /* clean print/PDF: commented text reads as plain text */
   a{color:#000;} a[href^="http"]::after{content:" (" attr(href) ")";font-size:.8em;color:#555;}
   pre,table,.callout,.schema{break-inside:avoid;} h1,h2,h3{break-after:avoid;}
 }
