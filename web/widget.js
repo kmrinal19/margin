@@ -1273,11 +1273,14 @@
     }
   });
 
-  var reflow;
+  var reflowPending = false;
   window.addEventListener("resize", function () {
     syncSidebarMode(); // reconcile scrim / modal state across the breakpoint
-    clearTimeout(reflow);
-    reflow = setTimeout(layoutGutter, 120);
+    // Coalesce to the next frame so the gutter dots reposition in the SAME paint
+    // as the text reflow (a debounce timer left them visibly drifted mid-resize).
+    if (reflowPending) return;
+    reflowPending = true;
+    requestAnimationFrame(function () { reflowPending = false; layoutGutter(); });
   });
   window.addEventListener("scroll", function () {
     if (pill.classList.contains("show")) hidePill();

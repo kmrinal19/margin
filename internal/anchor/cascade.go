@@ -50,7 +50,8 @@ type Doc struct {
 	texts      [][]rune
 	byID       map[string]int
 	whole      []rune
-	blockStart []int // rune offset of each block within whole
+	wholeStr   string // string(whole), built once for the tier-4 fuzzy haystack
+	blockStart []int  // rune offset of each block within whole
 }
 
 // NewDoc builds a Doc from ordered blocks (id + normalized text).
@@ -67,6 +68,7 @@ func NewDoc(blocks []Block) *Doc {
 		d.whole = append(d.whole, r...)
 		d.whole = append(d.whole, '\n') // separator; normalized text has no newlines
 	}
+	d.wholeStr = string(d.whole) // hoist out of the per-thread tier-4 fuzzy path
 	return d
 }
 
@@ -101,8 +103,9 @@ func (d *Doc) Resolve(s Stored) Result {
 		return d.healGlobal(at, exact, 0.7, 3)
 	}
 
-	// Tier 4 — last-resort fuzzy search across the whole doc.
-	if at := fuzzyRunes(d.whole, exact, d.globalHint(s)); at >= 0 {
+	// Tier 4 — last-resort fuzzy search across the whole doc (uses the cached
+	// whole-doc string so a corpus of drifted threads doesn't re-stringify it).
+	if at := fuzzyAt(d.wholeStr, exact, d.globalHint(s)); at >= 0 {
 		return d.healGlobal(at, exact, 0.5, 4)
 	}
 
@@ -215,13 +218,18 @@ func similarEnough(span, exact []rune) bool {
 }
 
 func fuzzyRunes(hay, needle []rune, hint int) int {
+	return fuzzyAt(string(hay), needle, hint)
+}
+
+// fuzzyAt Bitap-matches needle's leading window within the haystack string. The
+// bitmask bounds the pattern length, so for a long quote we match only its
+// leading window to find the START; the caller derives the span length from the
+// full quote (and re-validates it via similarEnough). hay is taken as a string
+// so callers with a hot, reusable haystack (the whole doc) can hoist string().
+func fuzzyAt(hay string, needle []rune, hint int) int {
 	if len(needle) == 0 {
 		return -1
 	}
-	// Bitap's bitmask bounds the pattern length, so for a long quote we fuzzy-match
-	// only its leading window to find the START; the caller derives the span length
-	// from the full quote. This lets long (e.g. multi-block) quotes survive edits
-	// that fall after their first maxFuzzyRunes characters.
 	pat := needle
 	if len(pat) > maxFuzzyRunes {
 		pat = pat[:maxFuzzyRunes]
@@ -232,7 +240,7 @@ func fuzzyRunes(hay, needle []rune, hint int) int {
 	dmp := diffmatchpatch.New()
 	dmp.MatchThreshold = matchThreshold
 	dmp.MatchDistance = matchDistance
-	return dmp.MatchMain(string(hay), string(pat), hint)
+	return dmp.MatchMain(hay, string(pat), hint)
 }
 
 // ── rune helpers ────────────────────────────────────────────────────────────

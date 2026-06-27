@@ -19,7 +19,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kmrinal19/margin/internal/anchor"
 	"github.com/kmrinal19/margin/internal/reanchor"
 	"github.com/kmrinal19/margin/internal/render"
 	"github.com/kmrinal19/margin/internal/store"
@@ -63,6 +62,8 @@ type Server struct {
 	st       *store.Store
 	handler  http.Handler
 	etagSeed int64 // per-process; makes ETags refresh across restarts/rebuilds
+	docs     *docCache
+	meta     *metaCache
 }
 
 var _ http.Handler = (*Server)(nil)
@@ -70,7 +71,12 @@ var _ http.Handler = (*Server)(nil)
 // New constructs a Server and wires its routes. The renderer and store must be
 // non-nil.
 func New(cfg Config, log *slog.Logger, rnd *render.Renderer, st *store.Store) *Server {
-	s := &Server{cfg: cfg, log: log, rnd: rnd, st: st, etagSeed: time.Now().UnixNano()}
+	s := &Server{
+		cfg: cfg, log: log, rnd: rnd, st: st,
+		etagSeed: time.Now().UnixNano(),
+		docs:     newDocCache(),
+		meta:     newMetaCache(),
+	}
 	s.handler = s.buildHandler()
 	return s
 }
@@ -210,13 +216,12 @@ func (s *Server) resolveThreads(r *http.Request, slug string, filter store.Filte
 		return threads, nil
 	}
 
-	src, _, err := s.readDoc(slug)
-	if err != nil {
+	doc, ok := s.docFor(slug)
+	if !ok {
 		// Source gone/unreadable: every anchor is effectively orphaned, but we
 		// don't persist that (the doc may reappear). Return stored, filtered.
 		return filterByStatus(threads, filter), nil
 	}
-	doc := anchor.NewDoc(s.rnd.Blocks(src))
 
 	var heals []store.HealRow
 	for i := range threads {
@@ -289,16 +294,12 @@ func (s *Server) listDocs() ([]render.DocInfo, error) {
 		if !validSlug(slug) {
 			return nil
 		}
-		info := render.DocInfo{Slug: slug, Title: slug}
-		if src, err := os.ReadFile(path); err == nil {
-			m := s.rnd.DocMeta(slug, src)
-			info.Title = m.Title
-			info.Date = m.Date
-			info.Status = m.Status
-			info.Excerpt = m.Excerpt
-			info.ReadMins = m.ReadMins
+		// reuse the stat WalkDir already did; metaFor re-parses only on change
+		fi, ierr := d.Info()
+		if ierr != nil {
+			return nil
 		}
-		docs = append(docs, info)
+		docs = append(docs, s.metaFor(slug, path, fi))
 		return nil
 	})
 	if walkErr != nil {
