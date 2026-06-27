@@ -1,5 +1,10 @@
 # margin
 
+[![CI](https://github.com/kmrinal19/margin/actions/workflows/ci.yml/badge.svg)](https://github.com/kmrinal19/margin/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/kmrinal19/margin?sort=semver)](https://github.com/kmrinal19/margin/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Go](https://img.shields.io/github/go-mod/go-version/kmrinal19/margin)](go.mod)
+
 A local, offline, single-binary tool for reviewing AI-authored design docs.
 
 `margin` renders Markdown docs as beautiful HTML, lets a human leave GitHub-style
@@ -138,3 +143,13 @@ Playwright E2E on every push and pull request.
 
 Architecture, layout, and the hard invariants are documented for contributors (human
 and AI) in [CLAUDE.md](./CLAUDE.md) and the path-scoped rules under `.claude/rules/`.
+
+## Contributing
+
+Issues and PRs welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md) for the dev setup
+and the gates, and [SECURITY.md](./SECURITY.md) to report a vulnerability privately.
+
+## License
+
+[MIT](./LICENSE) © Mrinal Kumar
+
