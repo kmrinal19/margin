@@ -36,28 +36,62 @@
 (function () {
   "use strict";
   var bar = document.getElementById("progress");
-  function onScroll() {
-    var h = document.documentElement, d = h.scrollHeight - h.clientHeight;
-    bar.style.width = (d > 0 ? (h.scrollTop / d) * 100 : 0) + "%";
-  }
-  document.addEventListener("scroll", onScroll, { passive: true });
-  onScroll();
   var links = [].slice.call(document.querySelectorAll(".toc a"));
   var map = new Map(links.map(function (a) { return [a.getAttribute("href").slice(1), a]; }));
-  if ("IntersectionObserver" in window) {
-    document.querySelectorAll("h2[id],h3[id]").forEach(function (h) {
-      new IntersectionObserver(function (es) {
-        es.forEach(function (e) {
-          var a = map.get(e.target.id);
-          if (e.isIntersecting && a) {
-            links.forEach(function (l) { l.classList.remove("active"); l.removeAttribute("aria-current"); });
-            a.classList.add("active");
-            a.setAttribute("aria-current", "location");
-          }
-        });
-      }, { rootMargin: "-10% 0px -80% 0px" }).observe(h);
-    });
+  var toc = document.querySelector(".toc");
+  var heads = [].slice.call(document.querySelectorAll("article h2[id], article h3[id]"));
+  var headerH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--header-h")) || 60;
+  var current = null;
+
+  function setActive(a) {
+    if (a === current) return;
+    if (current) { current.classList.remove("active"); current.removeAttribute("aria-current"); }
+    current = a;
+    if (a) {
+      a.classList.add("active");
+      a.setAttribute("aria-current", "location");
+      // keep the active entry in view ONLY when the TOC itself overflows — scoped to
+      // the TOC's own scroll so it can never nudge the window (no feedback loop)
+      if (toc && toc.scrollHeight > toc.clientHeight) {
+        var rt = a.getBoundingClientRect(), rc = toc.getBoundingClientRect();
+        if (rt.top < rc.top) toc.scrollTop -= rc.top - rt.top + 8;
+        else if (rt.bottom > rc.bottom) toc.scrollTop += rt.bottom - rc.bottom + 8;
+      }
+    }
   }
+
+  // Position-based scrollspy: the active section is the last heading whose top has
+  // crossed a "reading line" just below the sticky header — so it stays in sync
+  // mid-section, not only when the next heading reaches the top.
+  function spy() {
+    var de = document.documentElement;
+    var max = de.scrollHeight - de.clientHeight;
+    bar.style.width = (max > 0 ? (de.scrollTop / max) * 100 : 0) + "%";
+    if (!heads.length) return;
+
+    // at the very bottom, the final section is active even if its heading never
+    // reaches the reading line (short last section)
+    if (max > 0 && max - de.scrollTop < 2) { setActive(map.get(heads[heads.length - 1].id) || null); return; }
+
+    var line = headerH + 24;
+    var active = null;
+    for (var i = 0; i < heads.length; i++) {
+      if (heads[i].getBoundingClientRect().top <= line) active = map.get(heads[i].id) || active;
+      else break;
+    }
+    // before the first heading, highlight nothing rather than mis-pointing
+    setActive(active);
+  }
+
+  var ticking = false;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () { spy(); ticking = false; });
+  }
+  document.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll, { passive: true });
+  spy();
   // hover ¶ anchor link on each section heading
   document.querySelectorAll("article h2[id], article h3[id]").forEach(function (h) {
     var a = document.createElement("a");
