@@ -153,7 +153,8 @@ body::before{
   transition:margin .25s ease;}
 /* opening the panel re-centers the article into the space left of the sidebar —
    only above the modal breakpoint; at/below NARROW the sidebar overlays with a scrim */
-@media (min-width:1101px){
+/* must match the widget's NARROW=1100 (companion when width >= 1100, modal below) */
+@media (min-width:1100px){
   body.sidebar-open .layout{margin-right:0;margin-left:max(var(--s5),calc((100vw - var(--sidebar-w)) / 2 - 31rem));}
 }
 .toc{position:sticky;top:calc(var(--header-h) + var(--s5));align-self:start;max-height:calc(100vh - var(--header-h) - var(--s7));

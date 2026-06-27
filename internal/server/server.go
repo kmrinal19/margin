@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,24 +24,11 @@ import (
 	"github.com/kmrinal19/margin/web"
 )
 
-var slugSegRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-
-// validSlug reports whether s is a safe document slug. A slug is one or more
-// "/"-joined segments, each [a-z0-9][a-z0-9-]*, mapping to docs/<slug>.md. This
-// allows nested docs (e.g. "payments/refunds") while rejecting empty segments,
-// leading/trailing/double slashes, and any "." segment (so "..", path traversal,
-// is impossible at validation — docPath's containment check is a second guard).
-func validSlug(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, seg := range strings.Split(s, "/") {
-		if !slugSegRe.MatchString(seg) {
-			return false
-		}
-	}
-	return true
-}
+// validSlug reports whether s is a safe document slug (nested allowed, no "."
+// segment so path traversal is impossible). The shared implementation lives in
+// render.ValidSlug so the server and the CLI validate identically; docPath's
+// containment check is a second guard.
+func validSlug(s string) bool { return render.ValidSlug(s) }
 
 // IsLoopbackHost reports whether host is a loopback bind address. margin is
 // offline-only, so the CLI refuses non-loopback hosts unless explicitly overridden.
@@ -109,6 +95,10 @@ func (s *Server) buildHandler() http.Handler {
 	mux.HandleFunc("POST /api/comments/{slug...}", s.handleCreateComment)
 	mux.HandleFunc("POST /api/threads/{id}/replies", s.handleReply)
 	mux.HandleFunc("PATCH /api/threads/{id}", s.handlePatchThread)
+
+	if s.cfg.Debug {
+		mountDebug(mux) // loopback-only pprof/expvar, opt-in via --debug
+	}
 
 	// Outermost first: recover → log → bound execution → routes.
 	var h http.Handler = mux
@@ -334,7 +324,7 @@ func (s *Server) handleDoc(w http.ResponseWriter, r *http.Request) {
 	etag := s.docETag(fi)
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "no-cache") // must revalidate, but 304 is cheap
-	if match := r.Header.Get("If-None-Match"); match != "" && match == etag {
+	if etagMatch(r.Header.Get("If-None-Match"), etag) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
@@ -412,4 +402,22 @@ func (s *Server) readDoc(slug string) ([]byte, os.FileInfo, error) {
 func (s *Server) docETag(fi os.FileInfo) string {
 	h := sha256.Sum256(fmt.Appendf(nil, "%d:%d:%d", s.etagSeed, fi.ModTime().UnixNano(), fi.Size()))
 	return `"` + hex.EncodeToString(h[:8]) + `"`
+}
+
+// etagMatch implements RFC 7232 If-None-Match: a comma-separated list, a "*"
+// wildcard, and weak-tag (W/) comparison (margin's tags are strong, so the weak
+// prefix is simply stripped before comparing).
+func etagMatch(ifNoneMatch, etag string) bool {
+	if ifNoneMatch == "" {
+		return false
+	}
+	strip := func(s string) string { return strings.TrimPrefix(strings.TrimSpace(s), "W/") }
+	want := strip(etag)
+	for _, tok := range strings.Split(ifNoneMatch, ",") {
+		tok = strings.TrimSpace(tok)
+		if tok == "*" || strip(tok) == want {
+			return true
+		}
+	}
+	return false
 }

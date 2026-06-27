@@ -1,13 +1,11 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/kmrinal19/margin/internal/anchor"
@@ -16,22 +14,6 @@ import (
 	"github.com/kmrinal19/margin/internal/store"
 	"github.com/kmrinal19/margin/web"
 )
-
-var cliSlugSegRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-
-// validCLISlug accepts one or more "/"-joined segments (nested docs), rejecting
-// "." segments so a slug can never escape the docs directory.
-func validCLISlug(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, seg := range strings.Split(s, "/") {
-		if !cliSlugSegRe.MatchString(seg) {
-			return false
-		}
-	}
-	return true
-}
 
 // cmdExport writes a portable, server-free single-file HTML: the rendered doc
 // with inlined CSS plus a read-only snapshot of its review comments. It reads
@@ -47,7 +29,7 @@ func cmdExport(args []string) error {
 		return errors.New(`usage: margin export <slug> [--out file.html]`)
 	}
 	slug := rest[0]
-	if !validCLISlug(slug) {
+	if !render.ValidSlug(slug) {
 		return fmt.Errorf("invalid slug %q", slug)
 	}
 
@@ -68,7 +50,8 @@ func cmdExport(args []string) error {
 		art.Title = slug
 	}
 
-	ctx := context.Background()
+	ctx, stop := clientCtx() // honor SIGINT/SIGTERM like the other subcommands
+	defer stop()
 	st, err := store.Open(ctx, *dataDir)
 	if err != nil {
 		return err

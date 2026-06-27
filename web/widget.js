@@ -25,6 +25,13 @@
   var mqReduce = window.matchMedia("(prefers-reduced-motion: reduce)");
   var mqCoarse = window.matchMedia("(hover: none) and (pointer: coarse)");
   function scrollBehavior() { return mqReduce.matches ? "auto" : "smooth"; }
+  // shared focus-trap: on Tab/Shift+Tab at an edge of the focusable list f, wrap.
+  function trapTab(e, f) {
+    if (e.key !== "Tab" || !f.length) return;
+    var first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
   // whitespace set identical to Go's unicode.IsSpace (used by anchor.Normalize via
   // strings.Fields) — deliberately NOT JS \s, which includes U+FEFF and omits U+0085.
   var MG_WS = /[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/;
@@ -149,15 +156,11 @@
   document.body.appendChild(sidebar);
   // trap Tab inside the sidebar when it's a modal overlay (narrow screens)
   sidebar.addEventListener("keydown", function (e) {
-    if (e.key !== "Tab" || !sidebarModal) return;
-    var f = Array.prototype.filter.call(
+    if (!sidebarModal) return;
+    trapTab(e, Array.prototype.filter.call(
       sidebar.querySelectorAll('button, a[href], textarea, input, [tabindex="0"]'),
       function (x) { return x.offsetParent !== null; }
-    );
-    if (!f.length) return;
-    var first = f[0], last = f[f.length - 1];
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    ));
   });
 
   var pill = el("button", {
@@ -958,18 +961,7 @@
     });
     // trap Tab within the dialog
     pop.addEventListener("keydown", function (e) {
-      if (e.key !== "Tab") return;
-      var f = pop.querySelectorAll("textarea, button");
-      if (!f.length) return;
-      var first = f[0],
-        last = f[f.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
+      trapTab(e, pop.querySelectorAll("textarea, button"));
     });
   }
   // A centered composer for a document-level note (no text anchor). Opened from
@@ -1004,12 +996,7 @@
       else if (e.key === "Escape") closeComposer();
     });
     pop.addEventListener("keydown", function (e) {
-      if (e.key !== "Tab") return;
-      var f = pop.querySelectorAll("textarea, button");
-      if (!f.length) return;
-      var first = f[0], last = f[f.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      trapTab(e, pop.querySelectorAll("textarea, button"));
     });
   }
 

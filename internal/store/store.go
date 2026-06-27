@@ -179,6 +179,10 @@ func stripSQLComments(s string) string {
 
 func nowStr() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
+// parseTime parses a timestamp this package itself wrote via nowStr (RFC3339Nano,
+// UTC). The error is intentionally ignored: every stored value is produced by
+// nowStr, so a parse failure is impossible by construction; a corrupt value would
+// surface as the zero Time, which the callers already treat as "unknown".
 func parseTime(s string) time.Time {
 	t, _ := time.Parse(time.RFC3339Nano, s)
 	return t

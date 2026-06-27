@@ -163,12 +163,7 @@ func buildTOC(doc ast.Node, source []byte) []TOCItem {
 		}
 		id := ""
 		if v, ok := h.AttributeString("id"); ok {
-			switch s := v.(type) {
-			case []byte:
-				id = string(s)
-			case string:
-				id = s
-			}
+			id = attrString(v)
 		}
 		toc = append(toc, TOCItem{ID: id, Text: nodeText(h, source), Level: h.Level})
 		return ast.WalkSkipChildren, nil

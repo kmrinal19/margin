@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,6 +23,24 @@ import (
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 )
+
+var slugSegRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+// ValidSlug reports whether s is a safe document slug: one or more "/"-joined
+// segments, each [a-z0-9][a-z0-9-]*, rejecting empty and "." segments so a slug
+// can never escape the docs directory. Shared by the server routes and the CLI
+// so they validate identically. Nested docs (e.g. "payments/refunds") are valid.
+func ValidSlug(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, seg := range strings.Split(s, "/") {
+		if !slugSegRe.MatchString(seg) {
+			return false
+		}
+	}
+	return true
+}
 
 // TOCItem is one entry in a document's table of contents.
 type TOCItem struct {
