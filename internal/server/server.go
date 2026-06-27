@@ -13,36 +13,22 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/kmrinal19/margin/internal/anchor"
+	"github.com/kmrinal19/margin/internal/reanchor"
 	"github.com/kmrinal19/margin/internal/render"
 	"github.com/kmrinal19/margin/internal/store"
 	"github.com/kmrinal19/margin/web"
 )
 
-var slugSegRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-
-// validSlug reports whether s is a safe document slug. A slug is one or more
-// "/"-joined segments, each [a-z0-9][a-z0-9-]*, mapping to docs/<slug>.md. This
-// allows nested docs (e.g. "payments/refunds") while rejecting empty segments,
-// leading/trailing/double slashes, and any "." segment (so "..", path traversal,
-// is impossible at validation — docPath's containment check is a second guard).
-func validSlug(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, seg := range strings.Split(s, "/") {
-		if !slugSegRe.MatchString(seg) {
-			return false
-		}
-	}
-	return true
-}
+// validSlug reports whether s is a safe document slug (nested allowed, no "."
+// segment so path traversal is impossible). The shared implementation lives in
+// render.ValidSlug so the server and the CLI validate identically; docPath's
+// containment check is a second guard.
+func validSlug(s string) bool { return render.ValidSlug(s) }
 
 // IsLoopbackHost reports whether host is a loopback bind address. margin is
 // offline-only, so the CLI refuses non-loopback hosts unless explicitly overridden.
@@ -54,22 +40,45 @@ func IsLoopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// threadStore is the slice of the store the server actually uses. Defining it in
+// the consumer (per go-conventions) keeps the dependency narrow and lets tests
+// wrap a real *store.Store to observe writes (e.g. the no-write-storm invariant).
+type threadStore interface {
+	CreateThread(ctx context.Context, slug string, a store.Anchor, author, body string) (store.Thread, error)
+	GetThread(ctx context.Context, id int64) (store.Thread, error)
+	ListThreads(ctx context.Context, slug string, filter store.Filter) ([]store.Thread, error)
+	AddReply(ctx context.Context, threadID int64, author, body string) (store.Comment, error)
+	SetStatus(ctx context.Context, threadID int64, status, by, note string) error
+	UpdateAnchorResolutions(ctx context.Context, rows []store.HealRow) error
+	Counts(ctx context.Context) (map[string]store.DocCounts, error)
+	OpenCounts(ctx context.Context) (map[string]int, error)
+}
+
+var _ threadStore = (*store.Store)(nil)
+
 // Server serves the doc index, rendered docs, embedded assets, and the REST API.
 type Server struct {
 	cfg      Config
 	log      *slog.Logger
 	rnd      *render.Renderer
-	st       *store.Store
+	st       threadStore
 	handler  http.Handler
 	etagSeed int64 // per-process; makes ETags refresh across restarts/rebuilds
+	docs     *docCache
+	meta     *metaCache
 }
 
 var _ http.Handler = (*Server)(nil)
 
 // New constructs a Server and wires its routes. The renderer and store must be
 // non-nil.
-func New(cfg Config, log *slog.Logger, rnd *render.Renderer, st *store.Store) *Server {
-	s := &Server{cfg: cfg, log: log, rnd: rnd, st: st, etagSeed: time.Now().UnixNano()}
+func New(cfg Config, log *slog.Logger, rnd *render.Renderer, st threadStore) *Server {
+	s := &Server{
+		cfg: cfg, log: log, rnd: rnd, st: st,
+		etagSeed: time.Now().UnixNano(),
+		docs:     newDocCache(),
+		meta:     newMetaCache(),
+	}
 	s.handler = s.buildHandler()
 	return s
 }
@@ -102,6 +111,10 @@ func (s *Server) buildHandler() http.Handler {
 	mux.HandleFunc("POST /api/comments/{slug...}", s.handleCreateComment)
 	mux.HandleFunc("POST /api/threads/{id}/replies", s.handleReply)
 	mux.HandleFunc("PATCH /api/threads/{id}", s.handlePatchThread)
+
+	if s.cfg.Debug {
+		mountDebug(mux) // loopback-only pprof/expvar, opt-in via --debug
+	}
 
 	// Outermost first: recover → log → bound execution → routes.
 	var h http.Handler = mux
@@ -209,13 +222,12 @@ func (s *Server) resolveThreads(r *http.Request, slug string, filter store.Filte
 		return threads, nil
 	}
 
-	src, _, err := s.readDoc(slug)
-	if err != nil {
+	doc, ok := s.docFor(slug)
+	if !ok {
 		// Source gone/unreadable: every anchor is effectively orphaned, but we
 		// don't persist that (the doc may reappear). Return stored, filtered.
 		return filterByStatus(threads, filter), nil
 	}
-	doc := anchor.NewDoc(s.rnd.Blocks(src))
 
 	var heals []store.HealRow
 	for i := range threads {
@@ -223,7 +235,7 @@ func (s *Server) resolveThreads(r *http.Request, slug string, filter store.Filte
 		if a.IsDoc() {
 			continue // document-level note: no span to re-anchor, never orphans
 		}
-		newA, orphaned := reanchor(doc, a)
+		newA, orphaned := reanchor.Resolve(doc, a)
 
 		// Persist only on a genuine change — a no-op resolution never touches the
 		// single-writer pool, even on the browser's frequent polling GETs.
@@ -242,44 +254,6 @@ func (s *Server) resolveThreads(r *http.Request, slug string, filter store.Filte
 	}
 
 	return filterByStatus(threads, filter), nil
-}
-
-// reanchor re-resolves an anchor against the current document, rewriting it to
-// the freshly-found span (so the next resolve hits tier 1 and a stable doc stops
-// generating writes). A multi-block anchor resolves its head and tail endpoints
-// independently and orphans if EITHER endpoint can no longer be located.
-func reanchor(doc *anchor.Doc, a store.Anchor) (store.Anchor, bool) {
-	if !a.Multi() {
-		res := doc.Resolve(anchor.Stored{
-			BlockID: a.BlockID, Prefix: a.QuotePrefix, Exact: a.QuoteExact,
-			Suffix: a.QuoteSuffix, Start: a.CharStart, End: a.CharEnd,
-		})
-		if !res.OK {
-			return a, true
-		}
-		n := a
-		n.BlockID, n.EndBlockID = res.BlockID, res.BlockID
-		n.QuoteExact, n.QuoteTail = res.Exact, ""
-		n.QuotePrefix, n.QuoteSuffix = res.Prefix, res.Suffix
-		n.CharStart, n.CharEnd = res.Start, res.End
-		n.Confidence = res.Confidence
-		return n, false
-	}
-
-	head := doc.Resolve(anchor.Stored{
-		BlockID: a.BlockID, Prefix: a.QuotePrefix, Exact: a.QuoteExact, Start: a.CharStart,
-	})
-	tail := doc.Resolve(anchor.Stored{
-		BlockID: a.EndBlockID, Exact: a.QuoteTail, Suffix: a.QuoteSuffix, Start: a.CharEnd,
-	})
-	if !head.OK || !tail.OK {
-		return a, true
-	}
-	n := a
-	n.BlockID, n.QuoteExact, n.QuotePrefix, n.CharStart = head.BlockID, head.Exact, head.Prefix, head.Start
-	n.EndBlockID, n.QuoteTail, n.QuoteSuffix, n.CharEnd = tail.BlockID, tail.Exact, tail.Suffix, tail.End
-	n.Confidence = min(head.Confidence, tail.Confidence)
-	return n, false
 }
 
 func filterByStatus(threads []store.Thread, filter store.Filter) []store.Thread {
@@ -326,16 +300,12 @@ func (s *Server) listDocs() ([]render.DocInfo, error) {
 		if !validSlug(slug) {
 			return nil
 		}
-		info := render.DocInfo{Slug: slug, Title: slug}
-		if src, err := os.ReadFile(path); err == nil {
-			m := s.rnd.DocMeta(slug, src)
-			info.Title = m.Title
-			info.Date = m.Date
-			info.Status = m.Status
-			info.Excerpt = m.Excerpt
-			info.ReadMins = m.ReadMins
+		// reuse the stat WalkDir already did; metaFor re-parses only on change
+		fi, ierr := d.Info()
+		if ierr != nil {
+			return nil
 		}
-		docs = append(docs, info)
+		docs = append(docs, s.metaFor(slug, path, fi))
 		return nil
 	})
 	if walkErr != nil {
@@ -370,7 +340,7 @@ func (s *Server) handleDoc(w http.ResponseWriter, r *http.Request) {
 	etag := s.docETag(fi)
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "no-cache") // must revalidate, but 304 is cheap
-	if match := r.Header.Get("If-None-Match"); match != "" && match == etag {
+	if etagMatch(r.Header.Get("If-None-Match"), etag) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
@@ -448,4 +418,22 @@ func (s *Server) readDoc(slug string) ([]byte, os.FileInfo, error) {
 func (s *Server) docETag(fi os.FileInfo) string {
 	h := sha256.Sum256(fmt.Appendf(nil, "%d:%d:%d", s.etagSeed, fi.ModTime().UnixNano(), fi.Size()))
 	return `"` + hex.EncodeToString(h[:8]) + `"`
+}
+
+// etagMatch implements RFC 7232 If-None-Match: a comma-separated list, a "*"
+// wildcard, and weak-tag (W/) comparison (margin's tags are strong, so the weak
+// prefix is simply stripped before comparing).
+func etagMatch(ifNoneMatch, etag string) bool {
+	if ifNoneMatch == "" {
+		return false
+	}
+	strip := func(s string) string { return strings.TrimPrefix(strings.TrimSpace(s), "W/") }
+	want := strip(etag)
+	for _, tok := range strings.Split(ifNoneMatch, ",") {
+		tok = strings.TrimSpace(tok)
+		if tok == "*" || strip(tok) == want {
+			return true
+		}
+	}
+	return false
 }

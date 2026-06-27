@@ -50,7 +50,8 @@ type Doc struct {
 	texts      [][]rune
 	byID       map[string]int
 	whole      []rune
-	blockStart []int // rune offset of each block within whole
+	wholeStr   string // string(whole), built once for the tier-4 fuzzy haystack
+	blockStart []int  // rune offset of each block within whole
 }
 
 // NewDoc builds a Doc from ordered blocks (id + normalized text).
@@ -67,6 +68,7 @@ func NewDoc(blocks []Block) *Doc {
 		d.whole = append(d.whole, r...)
 		d.whole = append(d.whole, '\n') // separator; normalized text has no newlines
 	}
+	d.wholeStr = string(d.whole) // hoist out of the per-thread tier-4 fuzzy path
 	return d
 }
 
@@ -87,8 +89,11 @@ func (d *Doc) Resolve(s Stored) Result {
 			return healInBlock(s.BlockID, t, at, exact, 1.0, 1) // tier 1: exact in block
 		}
 		// tier 2: fuzzy in block — require the matched span to fit inside the block
-		// (a match running off the end is degenerate; orphan instead).
-		if at := fuzzyRunes(t, exact, s.Start); at >= 0 && at+len(exact) <= len(t) {
+		// (a match running off the end is degenerate; orphan instead) AND the FULL
+		// sliced span to resemble the full quote. fuzzyRunes only matches the leading
+		// window of a long quote to find the start, so without this the unvalidated
+		// tail could heal onto the wrong text — a mis-anchor (the cardinal sin).
+		if at := fuzzyRunes(t, exact, s.Start); at >= 0 && at+len(exact) <= len(t) && similarEnough(t[at:at+len(exact)], exact) {
 			return healInBlock(s.BlockID, t, at, exact, 0.8, 2)
 		}
 	}
@@ -98,8 +103,9 @@ func (d *Doc) Resolve(s Stored) Result {
 		return d.healGlobal(at, exact, 0.7, 3)
 	}
 
-	// Tier 4 — last-resort fuzzy search across the whole doc.
-	if at := fuzzyRunes(d.whole, exact, d.globalHint(s)); at >= 0 {
+	// Tier 4 — last-resort fuzzy search across the whole doc (uses the cached
+	// whole-doc string so a corpus of drifted threads doesn't re-stringify it).
+	if at := fuzzyAt(d.wholeStr, exact, d.globalHint(s)); at >= 0 {
 		return d.healGlobal(at, exact, 0.5, 4)
 	}
 
@@ -142,7 +148,25 @@ func (d *Doc) healGlobal(at int, exact []rune, conf float64, tier int) Result {
 	if rel < 0 || rel+len(exact) > len(d.texts[bi]) {
 		return Result{OK: false}
 	}
+	// Validate the FULL sliced span against the quote — tier 4 fuzzy only matched
+	// the leading window, so the tail must be re-checked (prefer orphan over a
+	// confident mis-anchor). Tier 3 spans are exact, so this passes trivially.
+	if !similarEnough(d.texts[bi][rel:rel+len(exact)], exact) {
+		return Result{OK: false}
+	}
 	return healInBlock(d.ids[bi], d.texts[bi], rel, exact, conf, tier)
+}
+
+// Before reports whether document position (aBlock, aOff) strictly precedes
+// (bBlock, bOff). Used to reject an inverted multi-block span (head after tail).
+// Unknown blocks are treated as not-before (caller should orphan).
+func (d *Doc) Before(aBlock string, aOff int, bBlock string, bOff int) bool {
+	ai, aok := d.byID[aBlock]
+	bi, bok := d.byID[bBlock]
+	if !aok || !bok {
+		return false
+	}
+	return d.blockStart[ai]+aOff < d.blockStart[bi]+bOff
 }
 
 func (d *Doc) blockAt(at int) int {
@@ -177,14 +201,35 @@ func (d *Doc) findExactContext(prefix, exact, suffix []rune) int {
 	return best
 }
 
+// similarEnough reports whether a candidate span is close enough to the stored
+// quote to heal onto (rather than orphan). It bounds the Levenshtein edit
+// distance to matchThreshold of the quote length — the full-span analogue of the
+// Bitap threshold, so the unvalidated tail of a long fuzzy match can't mis-anchor.
+func similarEnough(span, exact []rune) bool {
+	if len(exact) == 0 {
+		return false
+	}
+	if runesEqual(span, exact) {
+		return true // tier-1/3 exact spans, the common case — skip the diff
+	}
+	dmp := diffmatchpatch.New()
+	diffs := dmp.DiffMain(string(span), string(exact), false)
+	return float64(dmp.DiffLevenshtein(diffs)) <= matchThreshold*float64(len(exact))
+}
+
 func fuzzyRunes(hay, needle []rune, hint int) int {
+	return fuzzyAt(string(hay), needle, hint)
+}
+
+// fuzzyAt Bitap-matches needle's leading window within the haystack string. The
+// bitmask bounds the pattern length, so for a long quote we match only its
+// leading window to find the START; the caller derives the span length from the
+// full quote (and re-validates it via similarEnough). hay is taken as a string
+// so callers with a hot, reusable haystack (the whole doc) can hoist string().
+func fuzzyAt(hay string, needle []rune, hint int) int {
 	if len(needle) == 0 {
 		return -1
 	}
-	// Bitap's bitmask bounds the pattern length, so for a long quote we fuzzy-match
-	// only its leading window to find the START; the caller derives the span length
-	// from the full quote. This lets long (e.g. multi-block) quotes survive edits
-	// that fall after their first maxFuzzyRunes characters.
 	pat := needle
 	if len(pat) > maxFuzzyRunes {
 		pat = pat[:maxFuzzyRunes]
@@ -195,7 +240,7 @@ func fuzzyRunes(hay, needle []rune, hint int) int {
 	dmp := diffmatchpatch.New()
 	dmp.MatchThreshold = matchThreshold
 	dmp.MatchDistance = matchDistance
-	return dmp.MatchMain(string(hay), string(pat), hint)
+	return dmp.MatchMain(hay, string(pat), hint)
 }
 
 // ── rune helpers ────────────────────────────────────────────────────────────

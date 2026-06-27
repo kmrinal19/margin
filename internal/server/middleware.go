@@ -35,6 +35,11 @@ func recoverMW(log *slog.Logger) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if v := recover(); v != nil {
+					// http.ErrAbortHandler is the stdlib's intentional abort sentinel
+					// (not a fault) — let net/http handle it rather than masking a 500.
+					if v == http.ErrAbortHandler {
+						panic(v)
+					}
 					log.Error("panic recovered", "err", v, "path", r.URL.Path, "stack", string(debug.Stack()))
 					http.Error(w, "internal server error", http.StatusInternalServerError)
 				}

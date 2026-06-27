@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -390,3 +391,205 @@ func TestSlugValidationAndNotFound(t *testing.T) {
 		t.Errorf("missing doc = %d, want 404", code2)
 	}
 }
+
+// spyStore wraps a real store to observe heal writes (the no-write-storm invariant).
+type spyStore struct {
+	*store.Store
+	healCalls int
+	healRows  int
+}
+
+func (s *spyStore) UpdateAnchorResolutions(ctx context.Context, rows []store.HealRow) error {
+	s.healCalls++
+	s.healRows += len(rows)
+	return s.Store.UpdateAnchorResolutions(ctx, rows)
+}
+
+// newSpyServer builds a server whose store is observable, for write-accounting tests.
+func newSpyServer(t *testing.T) (*httptest.Server, *spyStore, string, *render.Renderer) {
+	t.Helper()
+	docs, data := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(docs, "guide.md"), []byte(sampleDoc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rnd, err := render.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(context.Background(), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	spy := &spyStore{Store: st}
+	srv := New(Config{Host: "127.0.0.1", DocsDir: docs, DataDir: data},
+		slog.New(slog.NewTextHandler(io.Discard, nil)), rnd, spy)
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+	return ts, spy, docs, rnd
+}
+
+func TestNoWriteStormOnStableDoc(t *testing.T) {
+	ts, spy, docs, _ := newSpyServer(t)
+
+	// seed an anchored comment, then edit the doc so the anchor must heal
+	createComment(t, ts, mustRenderer(t), "main semester fee", "which fee?")
+	if err := os.WriteFile(filepath.Join(docs, "guide.md"),
+		[]byte(strings.Replace(sampleDoc, "Pay the main semester fee", "Please pay the main semester fee", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The first GET(s) heal the drifted anchor. Healing converges in a bounded
+	// number of steps (a fuzzy heal rewrites the anchor so the next resolve hits
+	// tier 1 and bumps confidence to 1.0), then reaches a fixed point.
+	for i := 0; i < 6; i++ {
+		_ = listThreads(t, ts, "all")
+	}
+	if spy.healRows == 0 {
+		t.Fatal("expected the drifted anchor to heal at least once")
+	}
+	converged := spy.healRows
+
+	// Once converged, the browser's frequent polling must perform ZERO further
+	// heal writes — a stable doc must never touch the single writer pool.
+	for i := 0; i < 5; i++ {
+		_ = listThreads(t, ts, "all")
+	}
+	if spy.healRows != converged {
+		t.Errorf("stable doc kept writing (a write storm): %d heal rows at convergence, %d after polling", converged, spy.healRows)
+	}
+}
+
+// mustRenderer is a tiny helper so createComment (which needs a renderer to find
+// block ids) can be reused with the spy server.
+func mustRenderer(t *testing.T) *render.Renderer {
+	t.Helper()
+	r, err := render.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func TestJSONErrorContract(t *testing.T) {
+	ts, _, _ := newTestServer(t)
+
+	// unknown field is rejected (DisallowUnknownFields)
+	code, _ := reqJSON(t, "POST", ts.URL+"/api/comments/guide", map[string]any{
+		"body": "x", "author": "human", "bogus": 1,
+		"anchor": map[string]any{"block_id": "b-1", "quote_exact": "x"},
+	})
+	if code != http.StatusBadRequest {
+		t.Errorf("unknown field = %d, want 400", code)
+	}
+
+	// an over-large body is rejected with 413 (MaxBytesReader)
+	big := strings.Repeat("a", 2<<20)
+	code2, _ := reqJSON(t, "POST", ts.URL+"/api/comments/guide", map[string]any{
+		"body": big, "author": "human",
+		"anchor": map[string]any{"block_id": "b-1", "quote_exact": "x"},
+	})
+	if code2 != http.StatusRequestEntityTooLarge {
+		t.Errorf("oversized body = %d, want 413", code2)
+	}
+
+	// missing quote on an anchored create
+	code3, _ := reqJSON(t, "POST", ts.URL+"/api/comments/guide", map[string]any{
+		"body": "x", "author": "human", "anchor": map[string]any{"block_id": "b-1"},
+	})
+	if code3 != http.StatusBadRequest {
+		t.Errorf("missing quote = %d, want 400", code3)
+	}
+}
+
+func TestConcurrentResolveAndHealRace(t *testing.T) {
+	ts, docs, rnd := newTestServer(t)
+	// seed a few anchored comments
+	for _, q := range []string{"eligibility window", "main semester fee", "all applicants"} {
+		createComment(t, ts, rnd, q, "note on "+q)
+	}
+	// edit the doc so every anchor must heal
+	edited := strings.NewReplacer(
+		"The eligibility window", "Note: the eligibility window",
+		"Pay the main semester fee", "Please pay the main semester fee",
+	).Replace(sampleDoc)
+	if err := os.WriteFile(filepath.Join(docs, "guide.md"), []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// hammer the resolve+heal path concurrently (run under -race)
+	const N = 40
+	done := make(chan struct{}, N)
+	for i := 0; i < N; i++ {
+		go func() {
+			defer func() { done <- struct{}{} }()
+			resp, err := http.Get(ts.URL + "/api/comments/guide?status=all")
+			if err == nil {
+				_, _ = io.Copy(io.Discard, resp.Body)
+				_ = resp.Body.Close()
+			}
+		}()
+	}
+	for i := 0; i < N; i++ {
+		<-done
+	}
+	got := listThreads(t, ts, "all")
+	if len(got) != 3 {
+		t.Fatalf("want 3 threads after concurrent heals, got %d", len(got))
+	}
+}
+
+func TestOrphanThenRestore(t *testing.T) {
+	ts, docs, rnd := newTestServer(t)
+	createComment(t, ts, rnd, "main semester fee", "which fee?")
+
+	// delete the quoted text → the thread orphans
+	gone := strings.Replace(sampleDoc, "Pay the main semester fee at registration.", "Pricing is described elsewhere.", 1)
+	if err := os.WriteFile(filepath.Join(docs, "guide.md"), []byte(gone), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := listThreads(t, ts, "all")
+	if len(got) != 1 || !got[0].Orphaned {
+		t.Fatalf("expected the thread to orphan, got %+v", got)
+	}
+
+	// restore the text → the thread un-orphans and re-anchors
+	if err := os.WriteFile(filepath.Join(docs, "guide.md"), []byte(sampleDoc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got = listThreads(t, ts, "all")
+	if len(got) != 1 || got[0].Orphaned {
+		t.Fatalf("expected the thread to recover after restore, got %+v", got)
+	}
+}
+
+func TestDocLevelResolveCycle(t *testing.T) {
+	ts, _, _ := newTestServer(t)
+	// create a doc-level note
+	code, data := reqJSON(t, "POST", ts.URL+"/api/comments/guide", map[string]any{
+		"scope": "doc", "body": "overall note", "author": "human",
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("create doc note: %d", code)
+	}
+	var th store.Thread
+	_ = json.Unmarshal(data, &th)
+
+	// resolve then reopen — a doc-level note behaves like any thread and never orphans
+	if c, _ := reqJSON(t, "PATCH", ts.URL+"/api/threads/"+itoa(th.ID), map[string]any{"status": "resolved", "by": "ai"}); c != http.StatusOK {
+		t.Fatalf("resolve doc note: %d", c)
+	}
+	res := listThreads(t, ts, "all")
+	if len(res) != 1 || res[0].Status != "resolved" || res[0].Orphaned {
+		t.Fatalf("doc note should be resolved and never orphaned, got %+v", res)
+	}
+	if c, _ := reqJSON(t, "PATCH", ts.URL+"/api/threads/"+itoa(th.ID), map[string]any{"status": "open", "by": "ai"}); c != http.StatusOK {
+		t.Fatalf("reopen doc note: %d", c)
+	}
+	res = listThreads(t, ts, "open")
+	if len(res) != 1 {
+		t.Fatalf("reopened doc note should be open, got %+v", res)
+	}
+}
+
+func itoa(n int64) string { return strconv.FormatInt(n, 10) }

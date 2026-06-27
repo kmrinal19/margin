@@ -25,6 +25,16 @@
   var mqReduce = window.matchMedia("(prefers-reduced-motion: reduce)");
   var mqCoarse = window.matchMedia("(hover: none) and (pointer: coarse)");
   function scrollBehavior() { return mqReduce.matches ? "auto" : "smooth"; }
+  // shared focus-trap: on Tab/Shift+Tab at an edge of the focusable list f, wrap.
+  function trapTab(e, f) {
+    if (e.key !== "Tab" || !f.length) return;
+    var first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+  // whitespace set identical to Go's unicode.IsSpace (used by anchor.Normalize via
+  // strings.Fields) — deliberately NOT JS \s, which includes U+FEFF and omits U+0085.
+  var MG_WS = /[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/;
 
   // ── tiny DOM helper ────────────────────────────────────────────────
   function el(tag, attrs) {
@@ -146,15 +156,11 @@
   document.body.appendChild(sidebar);
   // trap Tab inside the sidebar when it's a modal overlay (narrow screens)
   sidebar.addEventListener("keydown", function (e) {
-    if (e.key !== "Tab" || !sidebarModal) return;
-    var f = Array.prototype.filter.call(
+    if (!sidebarModal) return;
+    trapTab(e, Array.prototype.filter.call(
       sidebar.querySelectorAll('button, a[href], textarea, input, [tabindex="0"]'),
       function (x) { return x.offsetParent !== null; }
-    );
-    if (!f.length) return;
-    var first = f[0], last = f[f.length - 1];
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    ));
   });
 
   var pill = el("button", {
@@ -233,8 +239,16 @@
   // runs of whitespace to a single space, trim) and records, for each normalized
   // code point, its raw UTF-16 offset in `raw`. That lets us match in the same
   // normalized/code-point space the Go cascade uses, then map back to the raw DOM
-  // offsets a Range needs. (NFC is assumed already applied, as in real docs.)
+  // offsets a Range needs.
+  //
+  // Coordinate-space invariant: this MUST mirror anchor.Normalize (Go) or a stored
+  // quote won't match in the browser. Two subtleties: (1) NFC — the server hashes
+  // and matches on NFC text, so normalize here too (a no-op for the common,
+  // already-NFC doc; defensive otherwise). (2) the whitespace set must equal Go's
+  // unicode.IsSpace, NOT JS \s — \s wrongly includes U+FEFF (BOM) and omits U+0085
+  // (NEL); MG_WS below matches Go exactly.
   function collapse(raw) {
+    raw = raw.normalize("NFC");
     var cps = Array.from(raw);
     var off = 0,
       starts = new Array(cps.length);
@@ -246,7 +260,7 @@
       n2r = [],
       prevSpace = true; // suppress leading whitespace
     for (var j = 0; j < cps.length; j++) {
-      if (/\s/.test(cps[j])) {
+      if (MG_WS.test(cps[j])) {
         if (!prevSpace) {
           out.push(" ");
           n2r.push(starts[j]);
@@ -947,18 +961,7 @@
     });
     // trap Tab within the dialog
     pop.addEventListener("keydown", function (e) {
-      if (e.key !== "Tab") return;
-      var f = pop.querySelectorAll("textarea, button");
-      if (!f.length) return;
-      var first = f[0],
-        last = f[f.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
+      trapTab(e, pop.querySelectorAll("textarea, button"));
     });
   }
   // A centered composer for a document-level note (no text anchor). Opened from
@@ -993,12 +996,7 @@
       else if (e.key === "Escape") closeComposer();
     });
     pop.addEventListener("keydown", function (e) {
-      if (e.key !== "Tab") return;
-      var f = pop.querySelectorAll("textarea, button");
-      if (!f.length) return;
-      var first = f[0], last = f[f.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      trapTab(e, pop.querySelectorAll("textarea, button"));
     });
   }
 
@@ -1262,11 +1260,14 @@
     }
   });
 
-  var reflow;
+  var reflowPending = false;
   window.addEventListener("resize", function () {
     syncSidebarMode(); // reconcile scrim / modal state across the breakpoint
-    clearTimeout(reflow);
-    reflow = setTimeout(layoutGutter, 120);
+    // Coalesce to the next frame so the gutter dots reposition in the SAME paint
+    // as the text reflow (a debounce timer left them visibly drifted mid-resize).
+    if (reflowPending) return;
+    reflowPending = true;
+    requestAnimationFrame(function () { reflowPending = false; layoutGutter(); });
   });
   window.addEventListener("scroll", function () {
     if (pill.classList.contains("show")) hidePill();

@@ -2,9 +2,43 @@ package render
 
 import (
 	"bytes"
+	"flag"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+var update = flag.Bool("update", false, "rewrite golden files")
+
+// TestRenderGolden locks the rendered article HTML against a checked-in golden so
+// any change to the Markdown pipeline (callouts, footnotes, definition lists, code,
+// block-id stamping) is a reviewable diff. Regenerate with: go test ./internal/render -update
+func TestRenderGolden(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("testdata", "sample.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	art, err := newRenderer(t).RenderArticle(src)
+	if err != nil {
+		t.Fatalf("RenderArticle: %v", err)
+	}
+	got := []byte(string(art.Body))
+	golden := filepath.Join("testdata", "sample.golden.html")
+	if *update {
+		if err := os.WriteFile(golden, got, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatalf("read golden (run -update to create): %v", err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("rendered HTML differs from golden (run: go test ./internal/render -update to accept)\n--- got ---\n%s", got)
+	}
+}
 
 func newRenderer(t *testing.T) *Renderer {
 	t.Helper()

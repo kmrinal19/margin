@@ -1,36 +1,19 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/kmrinal19/margin/internal/anchor"
+	"github.com/kmrinal19/margin/internal/reanchor"
 	"github.com/kmrinal19/margin/internal/render"
 	"github.com/kmrinal19/margin/internal/store"
 	"github.com/kmrinal19/margin/web"
 )
-
-var cliSlugSegRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-
-// validCLISlug accepts one or more "/"-joined segments (nested docs), rejecting
-// "." segments so a slug can never escape the docs directory.
-func validCLISlug(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, seg := range strings.Split(s, "/") {
-		if !cliSlugSegRe.MatchString(seg) {
-			return false
-		}
-	}
-	return true
-}
 
 // cmdExport writes a portable, server-free single-file HTML: the rendered doc
 // with inlined CSS plus a read-only snapshot of its review comments. It reads
@@ -46,7 +29,7 @@ func cmdExport(args []string) error {
 		return errors.New(`usage: margin export <slug> [--out file.html]`)
 	}
 	slug := rest[0]
-	if !validCLISlug(slug) {
+	if !render.ValidSlug(slug) {
 		return fmt.Errorf("invalid slug %q", slug)
 	}
 
@@ -67,7 +50,8 @@ func cmdExport(args []string) error {
 		art.Title = slug
 	}
 
-	ctx := context.Background()
+	ctx, stop := clientCtx() // honor SIGINT/SIGTERM like the other subcommands
+	defer stop()
 	st, err := store.Open(ctx, *dataDir)
 	if err != nil {
 		return err
@@ -79,17 +63,14 @@ func cmdExport(args []string) error {
 		return err
 	}
 
-	// Re-resolve anchors against the current source so the export's statuses
-	// (incl. orphaned) match what a live server would show.
+	// Re-resolve anchors with the SAME logic the live server uses (shared
+	// reanchor package), so the export's statuses — including orphaned, and the
+	// never-orphan rule for document-level and multi-block notes — match exactly.
 	doc := anchor.NewDoc(rnd.Blocks(src))
 	var ets []render.ExportThread
 	for _, t := range threads {
-		res := doc.Resolve(anchor.Stored{
-			BlockID: t.Anchor.BlockID, Prefix: t.Anchor.QuotePrefix,
-			Exact: t.Anchor.QuoteExact, Suffix: t.Anchor.QuoteSuffix,
-			Start: t.Anchor.CharStart, End: t.Anchor.CharEnd,
-		})
-		ets = append(ets, toExportThread(t, res.OK))
+		_, orphaned := reanchor.Resolve(doc, t.Anchor)
+		ets = append(ets, toExportThread(t, !orphaned))
 	}
 
 	css, err := web.Static.ReadFile("design-system.css")
