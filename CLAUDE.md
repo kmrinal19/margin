@@ -24,6 +24,8 @@ architecture decision changes, update `PRD.md` rather than silently diverging.
 | `./margin comments <slug> --open --json` | Token-minimal open comments (agent; `--full` adds thread history) |
 | `./margin reply <thread-id> --note "…"` | Reply without resolving (agent) |
 | `./margin resolve <thread-id> --note "…"` | Resolve a thread (agent) |
+| `./margin mcp` | Stdio MCP server (agents); built into the same binary, runs over `internal/mcp` |
+| `./margin agent-setup` | Register `margin mcp` in each installed agent's own config (never the repo) |
 
 ## Layout
 
@@ -31,6 +33,8 @@ architecture decision changes, update `PRD.md` rather than silently diverging.
 - `internal/server/` — HTTP routes, handlers, middleware.
 - `internal/render/` — Markdown→HTML, block-id stamping, callouts, shell + TOC.
 - `internal/anchor/` — block hashing + the 4-tier re-anchor cascade + fuzzy match.
+- `internal/reanchor/` — shared re-resolve (single + multi-block + doc-level) used by the server and the CLI export/MCP, so they never diverge.
+- `internal/mcp/` — tiny dependency-free MCP-over-stdio server (JSON-RPC 2.0).
 - `internal/store/` — SQLite (two-pool) schema + queries.
 - `internal/client/` — the CLI's HTTP client to the API.
 - `web/` — embedded assets (`design-system.css`, `widget.js`, `shell.html.tmpl`) via `//go:embed`.

@@ -1,0 +1,99 @@
+# GoReleaser config for margin — cross-compiled, pure-Go, CGO-free static binaries.
+# Release: tag `vX.Y.Z` and push; the release workflow runs `goreleaser release`.
+# Local dry run: `goreleaser release --snapshot --clean`.
+version: 2
+
+project_name: margin
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: margin
+    main: ./cmd/margin
+    binary: margin
+    env:
+      - CGO_ENABLED=0 # the single static binary invariant — no libc, no cgo
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: margin
+    # tar.gz everywhere except Windows (zip). Names line up with install.sh.
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: checksums.txt
+
+# Sign the checksums with Sigstore cosign (keyless). Requires cosign in the
+# release runner; the release workflow installs it. Disable by removing this block.
+signs:
+  - cmd: cosign
+    signature: ${artifact}.sig
+    certificate: ${artifact}.pem
+    args:
+      - sign-blob
+      - --output-signature=${signature}
+      - --output-certificate=${certificate}
+      - --yes
+      - ${artifact}
+    artifacts: checksum
+    output: true
+
+release:
+  github:
+    owner: kmrinal19
+    name: margin
+  draft: false
+  prerelease: auto
+  footer: |
+    ## Install
+
+    ```sh
+    curl -fsSL https://raw.githubusercontent.com/kmrinal19/margin/main/install.sh | sh
+    ```
+
+    Then, to let your AI agent address review comments:
+    ```sh
+    margin agent-setup
+    ```
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^test:", "^chore:", "Merge pull request", "Merge branch"]
+
+# ── Optional package managers (enable once the tap/bucket repos + token exist) ──
+# Homebrew: create a `kmrinal19/homebrew-tap` repo and a HOMEBREW_TAP_TOKEN secret,
+# then uncomment. NOTE: goreleaser is moving formula generation toward casks; for
+# an UNSIGNED binary, a self-maintained formula avoids the cask quarantine-strip.
+#
+# brews:
+#   - repository:
+#       owner: kmrinal19
+#       name: homebrew-tap
+#       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+#     homepage: https://github.com/kmrinal19/margin
+#     description: Local, offline doc review for the AI round-trip
+#     install: bin.install "margin"
+#     test: system "#{bin}/margin", "version"
+#
+# scoop:
+#   bucket:
+#     owner: kmrinal19
+#     name: scoop-bucket
+#     token: "{{ .Env.SCOOP_BUCKET_TOKEN }}"
+#   homepage: https://github.com/kmrinal19/margin
+#   description: Local, offline doc review for the AI round-trip
+#   license: MIT

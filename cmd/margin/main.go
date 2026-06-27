@@ -32,6 +32,10 @@ func main() {
 		err = cmdReopen(os.Args[2:])
 	case "reply":
 		err = cmdReply(os.Args[2:])
+	case "mcp":
+		err = cmdMCP(os.Args[2:])
+	case "agent-setup":
+		err = cmdAgentSetup(os.Args[2:])
 	case "export":
 		err = cmdExport(os.Args[2:])
 	case "version", "-version", "--version":
@@ -63,6 +67,8 @@ usage:
   margin resolve  <thread-id> [--note "…"]     resolve a thread (agent)
   margin reopen   <thread-id>                  reopen a resolved thread
   margin export   <slug> --inline              write a portable single-file HTML
+  margin mcp      [--docs ./docs] [--data ./data]   run as a stdio MCP server (agents)
+  margin agent-setup [--print-only]            register margin's MCP tools with installed agents
   margin version
 
 `)
