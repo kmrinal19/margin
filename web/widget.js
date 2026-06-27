@@ -25,6 +25,9 @@
   var mqReduce = window.matchMedia("(prefers-reduced-motion: reduce)");
   var mqCoarse = window.matchMedia("(hover: none) and (pointer: coarse)");
   function scrollBehavior() { return mqReduce.matches ? "auto" : "smooth"; }
+  // whitespace set identical to Go's unicode.IsSpace (used by anchor.Normalize via
+  // strings.Fields) — deliberately NOT JS \s, which includes U+FEFF and omits U+0085.
+  var MG_WS = /[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/;
 
   // ── tiny DOM helper ────────────────────────────────────────────────
   function el(tag, attrs) {
@@ -233,8 +236,16 @@
   // runs of whitespace to a single space, trim) and records, for each normalized
   // code point, its raw UTF-16 offset in `raw`. That lets us match in the same
   // normalized/code-point space the Go cascade uses, then map back to the raw DOM
-  // offsets a Range needs. (NFC is assumed already applied, as in real docs.)
+  // offsets a Range needs.
+  //
+  // Coordinate-space invariant: this MUST mirror anchor.Normalize (Go) or a stored
+  // quote won't match in the browser. Two subtleties: (1) NFC — the server hashes
+  // and matches on NFC text, so normalize here too (a no-op for the common,
+  // already-NFC doc; defensive otherwise). (2) the whitespace set must equal Go's
+  // unicode.IsSpace, NOT JS \s — \s wrongly includes U+FEFF (BOM) and omits U+0085
+  // (NEL); MG_WS below matches Go exactly.
   function collapse(raw) {
+    raw = raw.normalize("NFC");
     var cps = Array.from(raw);
     var off = 0,
       starts = new Array(cps.length);
@@ -246,7 +257,7 @@
       n2r = [],
       prevSpace = true; // suppress leading whitespace
     for (var j = 0; j < cps.length; j++) {
-      if (/\s/.test(cps[j])) {
+      if (MG_WS.test(cps[j])) {
         if (!prevSpace) {
           out.push(" ");
           n2r.push(starts[j]);

@@ -1,6 +1,6 @@
 module github.com/kmrinal19/margin
 
-go 1.26.0
+go 1.26.4
 
 require (
 	github.com/sergi/go-diff v1.4.0

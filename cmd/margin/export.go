@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/kmrinal19/margin/internal/anchor"
+	"github.com/kmrinal19/margin/internal/reanchor"
 	"github.com/kmrinal19/margin/internal/render"
 	"github.com/kmrinal19/margin/internal/store"
 	"github.com/kmrinal19/margin/web"
@@ -79,17 +80,14 @@ func cmdExport(args []string) error {
 		return err
 	}
 
-	// Re-resolve anchors against the current source so the export's statuses
-	// (incl. orphaned) match what a live server would show.
+	// Re-resolve anchors with the SAME logic the live server uses (shared
+	// reanchor package), so the export's statuses — including orphaned, and the
+	// never-orphan rule for document-level and multi-block notes — match exactly.
 	doc := anchor.NewDoc(rnd.Blocks(src))
 	var ets []render.ExportThread
 	for _, t := range threads {
-		res := doc.Resolve(anchor.Stored{
-			BlockID: t.Anchor.BlockID, Prefix: t.Anchor.QuotePrefix,
-			Exact: t.Anchor.QuoteExact, Suffix: t.Anchor.QuoteSuffix,
-			Start: t.Anchor.CharStart, End: t.Anchor.CharEnd,
-		})
-		ets = append(ets, toExportThread(t, res.OK))
+		_, orphaned := reanchor.Resolve(doc, t.Anchor)
+		ets = append(ets, toExportThread(t, !orphaned))
 	}
 
 	css, err := web.Static.ReadFile("design-system.css")

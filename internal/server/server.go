@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/kmrinal19/margin/internal/anchor"
+	"github.com/kmrinal19/margin/internal/reanchor"
 	"github.com/kmrinal19/margin/internal/render"
 	"github.com/kmrinal19/margin/internal/store"
 	"github.com/kmrinal19/margin/web"
@@ -223,7 +224,7 @@ func (s *Server) resolveThreads(r *http.Request, slug string, filter store.Filte
 		if a.IsDoc() {
 			continue // document-level note: no span to re-anchor, never orphans
 		}
-		newA, orphaned := reanchor(doc, a)
+		newA, orphaned := reanchor.Resolve(doc, a)
 
 		// Persist only on a genuine change — a no-op resolution never touches the
 		// single-writer pool, even on the browser's frequent polling GETs.
@@ -242,44 +243,6 @@ func (s *Server) resolveThreads(r *http.Request, slug string, filter store.Filte
 	}
 
 	return filterByStatus(threads, filter), nil
-}
-
-// reanchor re-resolves an anchor against the current document, rewriting it to
-// the freshly-found span (so the next resolve hits tier 1 and a stable doc stops
-// generating writes). A multi-block anchor resolves its head and tail endpoints
-// independently and orphans if EITHER endpoint can no longer be located.
-func reanchor(doc *anchor.Doc, a store.Anchor) (store.Anchor, bool) {
-	if !a.Multi() {
-		res := doc.Resolve(anchor.Stored{
-			BlockID: a.BlockID, Prefix: a.QuotePrefix, Exact: a.QuoteExact,
-			Suffix: a.QuoteSuffix, Start: a.CharStart, End: a.CharEnd,
-		})
-		if !res.OK {
-			return a, true
-		}
-		n := a
-		n.BlockID, n.EndBlockID = res.BlockID, res.BlockID
-		n.QuoteExact, n.QuoteTail = res.Exact, ""
-		n.QuotePrefix, n.QuoteSuffix = res.Prefix, res.Suffix
-		n.CharStart, n.CharEnd = res.Start, res.End
-		n.Confidence = res.Confidence
-		return n, false
-	}
-
-	head := doc.Resolve(anchor.Stored{
-		BlockID: a.BlockID, Prefix: a.QuotePrefix, Exact: a.QuoteExact, Start: a.CharStart,
-	})
-	tail := doc.Resolve(anchor.Stored{
-		BlockID: a.EndBlockID, Exact: a.QuoteTail, Suffix: a.QuoteSuffix, Start: a.CharEnd,
-	})
-	if !head.OK || !tail.OK {
-		return a, true
-	}
-	n := a
-	n.BlockID, n.QuoteExact, n.QuotePrefix, n.CharStart = head.BlockID, head.Exact, head.Prefix, head.Start
-	n.EndBlockID, n.QuoteTail, n.QuoteSuffix, n.CharEnd = tail.BlockID, tail.Exact, tail.Suffix, tail.End
-	n.Confidence = min(head.Confidence, tail.Confidence)
-	return n, false
 }
 
 func filterByStatus(threads []store.Thread, filter store.Filter) []store.Thread {

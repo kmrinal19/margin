@@ -135,6 +135,34 @@ func TestTier4DoesNotMatchAcrossBlockSeparator(t *testing.T) {
 	}
 }
 
+func TestLongQuoteMisAnchorIsOrphaned(t *testing.T) {
+	t.Parallel()
+	// The cardinal-sin regression: a quote longer than maxFuzzyRunes (32) whose
+	// LEADING window still matches in the block but whose TAIL has been replaced by
+	// unrelated text. fuzzyRunes matches only the leading window to find the start;
+	// without full-span validation the unvalidated tail would heal onto the wrong
+	// text (a mis-anchor). It must orphan instead.
+	lead := "The quick brown fox jumps over the " // 35 runes — exceeds maxFuzzyRunes
+	d := doc([2]string{"b-1", lead + "moon and into a completely different sentence entirely."})
+	// stored tail ("lazy dog and then rests by the river") is gone from the block
+	r := d.Resolve(stored("b-1", "", lead+"lazy dog and then rests by the river", "", 0))
+	if r.OK {
+		t.Fatalf("a long quote whose tail no longer matches must orphan, got tier %d span %q", r.Tier, r.Exact)
+	}
+}
+
+func TestLongQuoteFuzzyHealsWhenTailStillMatches(t *testing.T) {
+	t.Parallel()
+	// Counterpart: a long quote with only a SMALL edit (well within threshold) must
+	// still heal — the validation rejects mis-anchors, not legitimate drift.
+	d := doc([2]string{"b-1", "The quick brown fox jumps over the lazy dog and rests by the river."})
+	// one-word edit ("rests" stored as "rests"; change "quick"->"quic")
+	r := d.Resolve(stored("b-1", "", "The quic brown fox jumps over the lazy dog and rests by the river.", "", 0))
+	if !r.OK {
+		t.Fatalf("a long quote with a tiny edit should still heal, got orphan")
+	}
+}
+
 func TestNormalizationInsensitive(t *testing.T) {
 	t.Parallel()
 	// Block text has collapsed whitespace; stored quote has messy whitespace.

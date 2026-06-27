@@ -87,8 +87,11 @@ func (d *Doc) Resolve(s Stored) Result {
 			return healInBlock(s.BlockID, t, at, exact, 1.0, 1) // tier 1: exact in block
 		}
 		// tier 2: fuzzy in block — require the matched span to fit inside the block
-		// (a match running off the end is degenerate; orphan instead).
-		if at := fuzzyRunes(t, exact, s.Start); at >= 0 && at+len(exact) <= len(t) {
+		// (a match running off the end is degenerate; orphan instead) AND the FULL
+		// sliced span to resemble the full quote. fuzzyRunes only matches the leading
+		// window of a long quote to find the start, so without this the unvalidated
+		// tail could heal onto the wrong text — a mis-anchor (the cardinal sin).
+		if at := fuzzyRunes(t, exact, s.Start); at >= 0 && at+len(exact) <= len(t) && similarEnough(t[at:at+len(exact)], exact) {
 			return healInBlock(s.BlockID, t, at, exact, 0.8, 2)
 		}
 	}
@@ -142,7 +145,25 @@ func (d *Doc) healGlobal(at int, exact []rune, conf float64, tier int) Result {
 	if rel < 0 || rel+len(exact) > len(d.texts[bi]) {
 		return Result{OK: false}
 	}
+	// Validate the FULL sliced span against the quote — tier 4 fuzzy only matched
+	// the leading window, so the tail must be re-checked (prefer orphan over a
+	// confident mis-anchor). Tier 3 spans are exact, so this passes trivially.
+	if !similarEnough(d.texts[bi][rel:rel+len(exact)], exact) {
+		return Result{OK: false}
+	}
 	return healInBlock(d.ids[bi], d.texts[bi], rel, exact, conf, tier)
+}
+
+// Before reports whether document position (aBlock, aOff) strictly precedes
+// (bBlock, bOff). Used to reject an inverted multi-block span (head after tail).
+// Unknown blocks are treated as not-before (caller should orphan).
+func (d *Doc) Before(aBlock string, aOff int, bBlock string, bOff int) bool {
+	ai, aok := d.byID[aBlock]
+	bi, bok := d.byID[bBlock]
+	if !aok || !bok {
+		return false
+	}
+	return d.blockStart[ai]+aOff < d.blockStart[bi]+bOff
 }
 
 func (d *Doc) blockAt(at int) int {
@@ -175,6 +196,22 @@ func (d *Doc) findExactContext(prefix, exact, suffix []rune) int {
 		}
 	}
 	return best
+}
+
+// similarEnough reports whether a candidate span is close enough to the stored
+// quote to heal onto (rather than orphan). It bounds the Levenshtein edit
+// distance to matchThreshold of the quote length — the full-span analogue of the
+// Bitap threshold, so the unvalidated tail of a long fuzzy match can't mis-anchor.
+func similarEnough(span, exact []rune) bool {
+	if len(exact) == 0 {
+		return false
+	}
+	if runesEqual(span, exact) {
+		return true // tier-1/3 exact spans, the common case — skip the diff
+	}
+	dmp := diffmatchpatch.New()
+	diffs := dmp.DiffMain(string(span), string(exact), false)
+	return float64(dmp.DiffLevenshtein(diffs)) <= matchThreshold*float64(len(exact))
 }
 
 func fuzzyRunes(hay, needle []rune, hint int) int {
