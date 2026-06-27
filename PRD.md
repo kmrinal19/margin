@@ -227,6 +227,7 @@ Notes: status lives on the **thread** (resolve is thread-level). Anchor offsets 
 | `POST` | `/api/comments/{slug...}` | Create thread + anchor + first comment |
 | `POST` | `/api/threads/{id}/replies` | Add a reply |
 | `PATCH` | `/api/threads/{id}` | Resolve / reopen (`{status, by, note?}`) |
+| `DELETE` | `/api/threads/{id}` | Permanently delete a thread (+ cascade anchor/comments) |
 
 **Nested docs.** A slug is one or more `/`-joined segments, each `[a-z0-9][a-z0-9-]*` (e.g. `payments/refunds` ↔ `docs/payments/refunds.md`); `.` segments are rejected so a slug can never escape `docs/`. The per-doc comment routes carry the slug as a **trailing wildcard** (`{slug...}`) because Go's `ServeMux` only allows a multi-segment match as the final path element — hence `/api/comments/{slug...}` rather than `/api/docs/{slug}/comments`. The desk renders folders as collapsible `<details>` (open state persisted in `localStorage`); a collapsed folder shows its descendants' aggregate open/orphan counts.
 

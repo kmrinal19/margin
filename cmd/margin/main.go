@@ -30,6 +30,8 @@ func main() {
 		err = cmdResolve(os.Args[2:])
 	case "reopen":
 		err = cmdReopen(os.Args[2:])
+	case "delete":
+		err = cmdDelete(os.Args[2:])
 	case "reply":
 		err = cmdReply(os.Args[2:])
 	case "mcp":
@@ -66,6 +68,7 @@ usage:
   margin reply    <thread-id> --note "…"       reply without resolving (agent)
   margin resolve  <thread-id> [--note "…"]     resolve a thread (agent)
   margin reopen   <thread-id>                  reopen a resolved thread
+  margin delete   <thread-id>                  permanently delete a thread (human)
   margin export   <slug> --inline              write a portable single-file HTML
   margin mcp      [--docs ./docs] [--data ./data]   run as a stdio MCP server (agents)
   margin agent-setup [--print-only]            register margin's MCP tools with installed agents

@@ -633,8 +633,27 @@
     syncSend();
 
     var copy = el("button", { class: "mg-btn ghost", type: "button", text: "Copy link", title: "Copy a link to this comment", onclick: function () { copyThreadLink(t.id); } });
-    c.appendChild(el("div", { class: "mg-reply" }, input, el("div", { class: "mg-card-foot" }, statusChip(t), spacer(), copy, actions(t), send)));
+    c.appendChild(el("div", { class: "mg-reply" }, input, el("div", { class: "mg-card-foot" }, statusChip(t), spacer(), copy, deleteAction(t), actions(t), send)));
     return c;
+  }
+
+  // deleteAction is a two-step, in-place confirm — "Delete" → "Delete?" / "Cancel" —
+  // since deletion is permanent (no undo). Human-only; agents never delete.
+  function deleteAction(t) {
+    var wrap = el("span", { class: "mg-del-wrap" });
+    function rest() {
+      wrap.textContent = "";
+      wrap.appendChild(el("button", { class: "mg-btn ghost", type: "button", text: "Delete", title: "Delete this comment permanently", onclick: arm }));
+    }
+    function arm() {
+      wrap.textContent = "";
+      var yes = el("button", { class: "mg-btn danger", type: "button", text: "Delete?", title: "Permanently delete — this can’t be undone", onclick: function () { deleteThread(t.id); } });
+      wrap.appendChild(yes);
+      wrap.appendChild(el("button", { class: "mg-btn ghost", type: "button", text: "Cancel", onclick: rest }));
+      yes.focus();
+    }
+    rest();
+    return wrap;
   }
 
   // peek: emphasise a thread's highlight + gutter marker on card/marker hover
@@ -1142,6 +1161,18 @@
         });
       })
       .catch(function () { toast("Update failed — server unreachable.", { error: true }); })
+      .then(function () { done(key); });
+  }
+  function deleteThread(tid) {
+    var key = "del:" + tid;
+    if (!busy(key)) return;
+    postJSON("/api/threads/" + tid, null, "DELETE")
+      .then(function (r) {
+        if (!r.ok) { toast("Delete failed (server " + r.status + ").", { error: true }); return; }
+        if (activeTid === tid) activeTid = null; // it's gone — drop the keyboard target
+        return loadThen().then(function () { toast("Comment deleted"); });
+      })
+      .catch(function () { toast("Delete failed — server unreachable.", { error: true }); })
       .then(function () { done(key); });
   }
 

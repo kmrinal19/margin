@@ -414,13 +414,17 @@ body.sidebar-modal{overflow:hidden;overscroll-behavior:contain;}
 .mg-msg .mg-author{font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
 .mg-msg .mg-body{font-size:.98rem;line-height:1.5;white-space:pre-wrap;word-wrap:break-word;}
 .mg-ai{font-family:var(--mono);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:var(--accent);color:var(--on-accent);border-radius:2px;padding:.1em .35em;}
-.mg-card-foot{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);border-top:1px solid var(--border);background:var(--bg-tint);}
-.mg-card-foot .spacer{flex:1;}
+.mg-card-foot{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);border-top:1px solid var(--border);background:var(--bg-tint);}
+.mg-card-foot .spacer{flex:1;min-width:var(--s4);} /* collapses first when the row wraps */
 
 .mg-btn{font-family:var(--sans);font-size:var(--fs-sm);color:var(--muted);background:transparent;border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:var(--s1) var(--s3);cursor:pointer;transition:color .12s, border-color .12s;}
 .mg-btn:hover{color:var(--accent);border-color:var(--accent);}
 .mg-btn.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent);}
 .mg-btn.primary:hover{background:var(--accent-deep);color:var(--on-accent);}
+/* destructive confirm (the "Delete?" step) — always visible, fills red on hover */
+.mg-btn.danger{color:var(--accent);border-color:var(--accent);}
+.mg-btn.danger:hover{background:var(--accent);color:var(--on-accent);}
+.mg-del-wrap{display:inline-flex;gap:var(--s2);}
 .mg-reply{display:flex;flex-direction:column;gap:var(--s2);padding:var(--s3);border-top:1px solid var(--border);}
 .mg-input{font-family:var(--sans);font-size:var(--fs-sm);width:100%;resize:vertical;min-height:2.4em;background:var(--bg);color:var(--ink);border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:var(--s2);}
 .mg-input:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 2px var(--accent);}

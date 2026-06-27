@@ -123,6 +123,12 @@ func (c *Client) Reply(ctx context.Context, threadID int64, author, body string)
 	return cm, nil
 }
 
+// Delete permanently removes a thread and its comments/anchor.
+func (c *Client) Delete(ctx context.Context, threadID int64) error {
+	path := fmt.Sprintf("/api/threads/%d", threadID)
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
+}
+
 // SetStatus resolves or reopens a thread, optionally posting a note first.
 func (c *Client) SetStatus(ctx context.Context, threadID int64, status, by, note string) (store.Thread, error) {
 	if status != store.StatusOpen && status != store.StatusResolved {

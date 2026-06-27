@@ -126,3 +126,28 @@ test("pressing c with nothing selected opens the document-note composer", async 
   await page.keyboard.press("c");
   await expect(page.locator("#mg-composer[role='dialog'] .mg-doclabel")).toContainText(/On this document/i);
 });
+
+test("delete: a two-step confirm removes the comment and its highlight; Cancel aborts", async ({ page }) => {
+  await page.goto("/doc/" + slug);
+  await comment(page, "first concern in detail", "delete me please");
+  const card = page.locator(".mg-card").first();
+  await expect(page.locator("mark.mg-hl")).toHaveCount(1);
+
+  // first click arms the confirm (does NOT delete)
+  await card.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(card.getByRole("button", { name: "Delete?", exact: true })).toBeVisible();
+  // Cancel aborts — comment still there
+  await card.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.locator('.mg-tab[data-filter="open"] .chip')).toHaveText("1");
+
+  // arm again and confirm → comment + highlight gone, clean state
+  await card.getByRole("button", { name: "Delete", exact: true }).click();
+  await card.getByRole("button", { name: "Delete?", exact: true }).click();
+  await expect(page.locator(".mg-card")).toHaveCount(0);
+  await expect(page.locator("mark.mg-hl")).toHaveCount(0);
+  await expect(page.locator(".mg-marker")).toHaveCount(0);
+
+  // stays gone after reload (permanent)
+  await page.reload();
+  await expect(page.locator('.mg-tab[data-filter="open"] .chip')).toHaveText("0");
+});

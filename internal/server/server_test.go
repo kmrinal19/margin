@@ -593,3 +593,28 @@ func TestDocLevelResolveCycle(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+func TestDeleteThread(t *testing.T) {
+	ts, _, rnd := newTestServer(t)
+	th := createComment(t, ts, rnd, "main semester fee", "kill this")
+	if n := len(listThreads(t, ts, "all")); n != 1 {
+		t.Fatalf("setup: want 1 thread, got %d", n)
+	}
+
+	// DELETE removes it (204) and it's gone, with its comments/anchor cascaded away
+	code, _ := reqJSON(t, "DELETE", ts.URL+"/api/threads/"+itoa(th.ID), nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("delete = %d, want 204", code)
+	}
+	if n := len(listThreads(t, ts, "all")); n != 0 {
+		t.Errorf("want 0 threads after delete, got %d", n)
+	}
+
+	// deleting again / a missing thread is 404
+	if code, _ := reqJSON(t, "DELETE", ts.URL+"/api/threads/"+itoa(th.ID), nil); code != http.StatusNotFound {
+		t.Errorf("re-delete = %d, want 404", code)
+	}
+	if code, _ := reqJSON(t, "DELETE", ts.URL+"/api/threads/abc", nil); code != http.StatusBadRequest {
+		t.Errorf("non-numeric id = %d, want 400", code)
+	}
+}

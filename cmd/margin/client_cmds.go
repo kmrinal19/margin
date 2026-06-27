@@ -230,6 +230,26 @@ func cmdResolve(args []string) error {
 	return nil
 }
 
+func cmdDelete(args []string) error {
+	fs := flag.NewFlagSet("delete", flag.ExitOnError)
+	server := fs.String("server", defaultServer, "margin server URL")
+	rest := parseArgs(fs, args)
+	if len(rest) < 1 {
+		return errors.New("usage: margin delete <thread-id>  (permanent)")
+	}
+	id, err := strconv.ParseInt(rest[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid thread id %q", rest[0])
+	}
+	ctx, stop := clientCtx()
+	defer stop()
+	if err := client.New(*server).Delete(ctx, id); err != nil {
+		return err
+	}
+	fmt.Printf("deleted thread #%d\n", id)
+	return nil
+}
+
 func cmdReopen(args []string) error {
 	fs := flag.NewFlagSet("reopen", flag.ExitOnError)
 	server := fs.String("server", defaultServer, "margin server URL")

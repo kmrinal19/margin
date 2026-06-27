@@ -83,6 +83,7 @@ margin comments <slug> [--all] [--json [--full]]   list threads (token-minimal w
 margin reply    <thread-id> --note "…"       reply without resolving (agent)
 margin resolve  <thread-id> [--note "…"]     resolve a thread
 margin reopen   <thread-id>                  reopen a resolved thread
+margin delete   <thread-id>                  permanently delete a thread
 margin export   <slug> [--out file.html]     write a portable, self-contained HTML
 margin mcp      [--docs ./docs] [--data ./data]   run as a stdio MCP server (agents)
 margin agent-setup [--print-only]            register margin's MCP tools with installed agents

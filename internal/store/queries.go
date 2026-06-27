@@ -268,6 +268,19 @@ func (s *Store) SetStatus(ctx context.Context, threadID int64, status, by, note 
 	return tx.Commit()
 }
 
+// DeleteThread permanently removes a thread and (via ON DELETE CASCADE) its
+// anchor and all its comments. Returns ErrNotFound if no such thread exists.
+func (s *Store) DeleteThread(ctx context.Context, threadID int64) error {
+	res, err := s.writer.ExecContext(ctx, `DELETE FROM comment_thread WHERE id=?`, threadID)
+	if err != nil {
+		return fmt.Errorf("delete thread: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // HealRow is one thread's re-resolved anchor plus its orphaned flag.
 type HealRow struct {
 	ThreadID int64

@@ -184,6 +184,25 @@ func (s *Server) handlePatchThread(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, th)
 }
 
+// DELETE /api/threads/{id}  -> permanently remove a thread (+ its comments/anchor)
+func (s *Server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(r.PathValue("id"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid thread id")
+		return
+	}
+	if err := s.st.DeleteThread(r.Context(), id); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "no such thread")
+			return
+		}
+		s.log.Error("delete thread", "thread", id, "err", err)
+		writeError(w, http.StatusInternalServerError, "could not delete thread")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
