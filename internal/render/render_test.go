@@ -48,6 +48,51 @@ func TestRenderDocBasics(t *testing.T) {
 	}
 }
 
+func TestRenderWave3Features(t *testing.T) {
+	t.Parallel()
+	r := newRenderer(t)
+	src := []byte("---\ntitle: Features\n---\n\n" +
+		"Body text with a note.[^n] More words here to give the reader something to count.\n\n" +
+		"Term\n: A definition of the term.\n\n" +
+		"[^n]: the footnote text.\n\n" +
+		"```sql\nSELECT 1;\n```\n")
+	var buf bytes.Buffer
+	if err := r.RenderDoc(&buf, "feat", src); err != nil {
+		t.Fatalf("RenderDoc: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		`class="footnotes"`,    // footnote endnotes section
+		"<dl>", "<dt>", "<dd>", // definition list
+		`data-lang="sql"`,     // language label hook on the code block
+		"min read",            // reading time in the dateline
+		`<div class="prose">`, // body wrapper that enables the drop cap
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered output missing %q", want)
+		}
+	}
+}
+
+func TestReadingHelpers(t *testing.T) {
+	t.Parallel()
+	if got := humanInt(1840); got != "1,840" {
+		t.Errorf("humanInt(1840) = %q, want 1,840", got)
+	}
+	if got := humanInt(42); got != "42" {
+		t.Errorf("humanInt(42) = %q, want 42", got)
+	}
+	if got := readingMinutes(0); got != 0 {
+		t.Errorf("readingMinutes(0) = %d, want 0", got)
+	}
+	if got := readingMinutes(1); got != 1 {
+		t.Errorf("readingMinutes(1) = %d, want 1", got)
+	}
+	if got := readingMinutes(476); got != 2 {
+		t.Errorf("readingMinutes(476) = %d, want 2", got)
+	}
+}
+
 func TestRenderDocNoFrontMatterUsesH1(t *testing.T) {
 	t.Parallel()
 	r := newRenderer(t)

@@ -239,11 +239,12 @@ Notes: status lives on the **thread** (resolve is thread-level). Anchor offsets 
 
 ```
 margin serve [--port 8848] [--host 127.0.0.1] [--docs ./docs] [--data ./data]
-margin docs                                  # list docs + open-comment counts
-margin comments <slug> [--open] [--json]     # default --open; token-minimal JSON with --json
+margin docs                                       # list docs + open-comment counts
+margin comments <slug> [--open|--all] [--json [--full]]  # default --open; token-minimal JSON with --json; --full adds thread history
+margin reply   <thread-id> --note "…"        # POST an ai reply WITHOUT resolving (agent pushes back / partially addresses)
 margin resolve <thread-id> [--note "…"]      # PATCH status=resolved, author=ai, optional reply
 margin reopen  <thread-id>
-margin export  <slug> --inline               # (later) portable single-file HTML
+margin export  <slug> --inline               # portable single-file HTML
 ```
 The client subcommands are thin HTTP calls to a running `serve`. If the server is down, `comments` may fall back to read-only SQLite; **writes always go through the API**.
 
@@ -483,6 +484,10 @@ Pitfalls: global offsets orphan everything on any earlier edit (→ block-relati
 ]
 ```
 `t`=thread id, `b`=block id, `q`=exact quote (the search handle), `ctx`=[prefix,suffix], `c`=latest comment body, `s`=status. Omit resolved threads and all position math — the agent locates the span by searching the `.md` for `q` (disambiguated by `ctx`), edits, and resolves.
+
+Optional fields surface state the agent needs to act correctly: `n`=message count, `mine`=true when the latest message is the agent's own (so it doesn't re-read its own note as new feedback), `relocated`=true when the anchor was fuzzy-healed (verify the span still fits), `qt`=multi-block tail quote, `orphaned`=true when the quote can no longer be found. `--full` adds `msgs`=`[{a,b}]`, the whole thread history (author + body).
+
+**Reply (without resolving):** `margin reply 42 --note "Partially addressed — renamed the field but the fee amount is still open for discussion."` — posts an `ai` comment and leaves the thread open, so the human sees the agent's response in context.
 
 **Resolve:** `margin resolve 42 --note "Changed 'MAIN semester fee' → 'block fee'; see updated Eligibility block."`
 

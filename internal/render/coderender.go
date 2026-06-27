@@ -38,10 +38,16 @@ func writeCodeLines(w util.BufWriter, source []byte, n ast.Node) {
 func renderFencedCode(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	n := node.(*ast.FencedCodeBlock)
 	if entering {
+		lang := n.Language(source)
 		_, _ = w.WriteString("<pre")
 		writeBlockID(w, n)
+		if lang != nil {
+			_, _ = w.WriteString(` data-lang="`)
+			_, _ = w.Write(util.EscapeHTML(lang)) // shown as a label via CSS
+			_ = w.WriteByte('"')
+		}
 		_, _ = w.WriteString("><code")
-		if lang := n.Language(source); lang != nil {
+		if lang != nil {
 			_, _ = w.WriteString(` class="language-`)
 			_, _ = w.Write(util.EscapeHTML(lang))
 			_ = w.WriteByte('"')

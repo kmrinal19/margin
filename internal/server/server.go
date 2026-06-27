@@ -74,6 +74,10 @@ func (s *Server) buildHandler() http.Handler {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok"))
 	})
+	// Catch-all for unmatched GET paths → a templated 404. Scoped to GET (HEAD is
+	// covered) so a wrong-method request to a real route still falls through to
+	// ServeMux's built-in 405 + Allow header instead of being masked as a 404.
+	mux.HandleFunc("GET /", s.handleNotFound)
 
 	// REST API (§10) — shared by the browser widget and the CLI client.
 	mux.HandleFunc("GET /api/docs", s.handleListDocs)
@@ -136,14 +140,17 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	docs, err := s.listDocs()
 	if err != nil {
 		s.log.Error("list docs", "err", err)
-		http.Error(w, "could not list docs", http.StatusInternalServerError)
+		s.httpError(w, http.StatusInternalServerError)
 		return
 	}
-	if counts, err := s.st.OpenCounts(r.Context()); err != nil {
-		s.log.Warn("open counts", "err", err)
+	if counts, err := s.st.Counts(r.Context()); err != nil {
+		s.log.Warn("doc counts", "err", err)
 	} else {
 		for i := range docs {
-			docs[i].OpenCount = counts[docs[i].Slug]
+			c := counts[docs[i].Slug]
+			docs[i].OpenCount = c.Open
+			docs[i].ResolvedCount = c.Resolved
+			docs[i].OrphanCount = c.Orphaned
 		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -287,11 +294,16 @@ func (s *Server) listDocs() ([]render.DocInfo, error) {
 		if !validSlug(slug) {
 			continue
 		}
-		title := slug
+		info := render.DocInfo{Slug: slug, Title: slug}
 		if src, err := os.ReadFile(filepath.Join(s.cfg.DocsDir, e.Name())); err == nil {
-			title = s.rnd.DocMeta(slug, src).Title
+			m := s.rnd.DocMeta(slug, src)
+			info.Title = m.Title
+			info.Date = m.Date
+			info.Status = m.Status
+			info.Excerpt = m.Excerpt
+			info.ReadMins = m.ReadMins
 		}
-		docs = append(docs, render.DocInfo{Slug: slug, Title: title})
+		docs = append(docs, info)
 	}
 	sort.Slice(docs, func(i, j int) bool { return docs[i].Slug < docs[j].Slug })
 	return docs, nil
@@ -300,17 +312,17 @@ func (s *Server) listDocs() ([]render.DocInfo, error) {
 func (s *Server) handleDoc(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 	if !validSlug(slug) {
-		http.NotFound(w, r)
+		s.httpError(w, http.StatusNotFound)
 		return
 	}
 	src, fi, err := s.readDoc(slug)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			http.NotFound(w, r)
+			s.httpError(w, http.StatusNotFound)
 			return
 		}
 		s.log.Error("read doc", "slug", slug, "err", err)
-		http.Error(w, "could not read doc", http.StatusInternalServerError)
+		s.httpError(w, http.StatusInternalServerError)
 		return
 	}
 
@@ -327,6 +339,31 @@ func (s *Server) handleDoc(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.rnd.RenderDoc(w, slug, src); err != nil {
 		s.log.Error("render doc", "slug", slug, "err", err)
+	}
+}
+
+// handleNotFound serves a templated 404 for any unmatched path.
+func (s *Server) handleNotFound(w http.ResponseWriter, _ *http.Request) {
+	s.httpError(w, http.StatusNotFound)
+}
+
+// httpError renders a design-system-styled HTML error page with the given status.
+func (s *Server) httpError(w http.ResponseWriter, status int) {
+	heading, message := errorCopy(status)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := s.rnd.RenderError(w, status, heading, message); err != nil {
+		s.log.Error("render error page", "status", status, "err", err)
+	}
+}
+
+// errorCopy returns the on-brand heading + message for an HTTP status.
+func errorCopy(status int) (heading, message string) {
+	switch status {
+	case http.StatusNotFound:
+		return "No such manuscript.", "This page was left blank. The document you’re looking for isn’t on the desk."
+	default:
+		return "The press jammed.", "Something went wrong on our end. Try again in a moment."
 	}
 }
 

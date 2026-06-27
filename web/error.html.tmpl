@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Code}} · margin</title>
+{{template "themehead" .}}
+<link rel="stylesheet" href="/static/design-system.css">
+</head>
+<body>
+<header class="site-header">
+  <a class="doc-name" href="/">margin</a>
+  <span class="crumb">{{.Code}}</span>
+</header>
+<main class="errorpage" role="main">
+  <div class="err-code">{{.Code}}</div>
+  <h1>{{.Heading}}</h1>
+  <p>{{.Message}}</p>
+  <p class="err-back"><a href="/">❧&nbsp;&nbsp;Back to the desk</a></p>
+</main>
+</body>
+</html>

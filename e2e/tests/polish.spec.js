@@ -94,3 +94,33 @@ test("resolved highlight recedes (no underline) and reopen restores it", async (
     fs.rmSync(f, { force: true });
   }
 });
+
+test("TOC scrollspy tracks the section being read (not just the next heading)", async ({ page }) => {
+  const f = docFile("e2e-spy");
+  // three tall sections so each fills more than a viewport
+  const filler = (w) => Array.from({ length: 18 }, (_, i) => `${w} paragraph ${i + 1} with enough text to add vertical height to the section.`).join("\n\n");
+  fs.writeFileSync(
+    f,
+    `## Alpha\n\n${filler("Alpha")}\n\n## Beta\n\n${filler("Beta")}\n\n## Gamma\n\n${filler("Gamma")}\n`
+  );
+  try {
+    await page.setViewportSize({ width: 1280, height: 860 });
+    await page.goto("/doc/e2e-spy");
+
+    // read into the MIDDLE of Beta — the active TOC entry must be Beta, even though
+    // we're nowhere near the Gamma heading (the old band-based spy lagged here)
+    await page.evaluate(() => {
+      const h = document.getElementById("beta");
+      window.scrollTo({ top: h.getBoundingClientRect().top + window.scrollY + 200, behavior: "instant" });
+    });
+    await page.waitForTimeout(150);
+    await expect(page.locator(".toc a.active")).toHaveAttribute("href", "#beta");
+
+    // scrolling to the very bottom activates the last section
+    await page.evaluate(() => window.scrollTo({ top: 1e7, behavior: "instant" }));
+    await page.waitForTimeout(150);
+    await expect(page.locator(".toc a.active")).toHaveAttribute("href", "#gamma");
+  } finally {
+    fs.rmSync(f, { force: true });
+  }
+});

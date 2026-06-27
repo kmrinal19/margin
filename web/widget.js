@@ -61,6 +61,23 @@
     return new Date(iso).toLocaleDateString();
   }
 
+  function fmtAbs(iso) {
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? "" : d.toLocaleString();
+  }
+  // a <time> that shows a relative label, the absolute time on hover, and is
+  // re-labelled in place every minute so "just now" doesn't go stale.
+  function timeEl(iso) {
+    var e = el("time", { class: "mg-time", "data-iso": iso, title: fmtAbs(iso), text: rel(iso) });
+    e.setAttribute("datetime", iso);
+    return e;
+  }
+  function tickTimes() {
+    document.querySelectorAll("time.mg-time[data-iso]").forEach(function (t) {
+      t.textContent = rel(t.getAttribute("data-iso"));
+    });
+  }
+
   function authorLabel(a) {
     return a === "ai" ? "assistant" : a;
   }
@@ -161,11 +178,27 @@
       .then(function (data) {
         threads = (data && data.threads) || [];
         render();
+        maybeDeepLink();
       })
       .catch(function () {
         threads = [];
         render();
       });
+  }
+
+  // open a comment named in the URL hash (#mg-thread-N) once, on first load
+  var deepLinked = false;
+  function maybeDeepLink() {
+    if (deepLinked) return;
+    deepLinked = true;
+    var m = /^#mg-thread-(\d+)$/.exec(location.hash || "");
+    if (!m) return;
+    var id = parseInt(m[1], 10);
+    if (threadById(id)) { activate(id, true); flashCard(id); }
+  }
+  function flashCard(id) {
+    var c = list.querySelector('.mg-card[data-tid="' + id + '"]');
+    if (c) { c.classList.remove("flash"); void c.offsetWidth; c.classList.add("flash"); }
   }
 
   function render() {
@@ -312,7 +345,8 @@
   // Only the PRIMARY fragment of a (possibly multi-node) highlight is a tab stop /
   // AT target; the rest are aria-hidden so one comment = one announcement.
   function makeMark(t, primary) {
-    var mark = el("mark", { class: "mg-hl" + (t.status === "resolved" ? " resolved" : ""), "data-tid": String(t.id) });
+    var tentative = !t.orphaned && t.anchor.confidence > 0 && t.anchor.confidence < 1;
+    var mark = el("mark", { class: "mg-hl" + (t.status === "resolved" ? " resolved" : "") + (tentative ? " tentative" : ""), "data-tid": String(t.id) });
     mark.addEventListener("click", function () { activate(t.id, true); });
     if (primary) {
       mark.setAttribute("role", "button");
@@ -423,22 +457,75 @@
     });
   }
 
+  function emptyState() {
+    var box = el("div", { class: "mg-empty" });
+    if (filter === "open") {
+      if (threads.length > 0) { // there are threads, just none open → a clean manuscript
+        box.appendChild(el("div", { class: "mg-empty-mark", html: "❧" }));
+        box.appendChild(el("p", { class: "mg-empty-head", text: "The manuscript is clean." }));
+        box.appendChild(el("p", { class: "mg-empty-sub", text: "Every open note has been resolved." }));
+      } else {
+        box.appendChild(el("div", { class: "mg-empty-mark", html: PENCIL }));
+        box.appendChild(el("p", { class: "mg-empty-head", text: "Nothing in the margin yet." }));
+        box.appendChild(el("p", { class: "mg-empty-sub", text: "Select any text in the document to leave a note." }));
+        box.appendChild(el("button", { class: "mg-empty-hint", type: "button", text: "Press ? for keyboard shortcuts", onclick: openHelp }));
+      }
+    } else if (filter === "resolved") {
+      box.appendChild(el("p", { class: "mg-empty-sub", text: "No resolved comments yet." }));
+    } else {
+      box.appendChild(el("p", { class: "mg-empty-sub", text: "No orphaned comments — every note still has its place." }));
+    }
+    return box;
+  }
+
+  // ── keyboard-shortcut help overlay (?) ─────────────────────────────
+  var helpEl = null;
+  function openHelp() {
+    if (helpEl) return;
+    var SHORTCUTS = [
+      ["c", "Comment on the selection"],
+      ["j / k", "Next / previous comment"],
+      ["Enter", "Jump to the active comment’s anchor"],
+      ["r", "Reply to the active comment"],
+      ["e", "Resolve / reopen the active comment"],
+      ["?", "Show this help"],
+      ["Esc", "Close the composer, sidebar, or this help"],
+    ];
+    var rows = SHORTCUTS.map(function (s) {
+      return el("div", { class: "mg-help-row" }, el("kbd", { text: s[0] }), el("span", { text: s[1] }));
+    });
+    var close = el("button", { class: "mg-sb-close", type: "button", "aria-label": "Close help", html: "&times;", onclick: closeHelp });
+    var panel = el("div", { class: "mg-help", role: "dialog", "aria-modal": "true", "aria-label": "Keyboard shortcuts" },
+      close,
+      el("h2", { class: "mg-help-title", text: "Keyboard shortcuts" }));
+    rows.forEach(function (r) { panel.appendChild(r); });
+    helpEl = el("div", { class: "mg-help-scrim" }, panel);
+    helpEl.addEventListener("click", function (e) { if (e.target === helpEl) closeHelp(); });
+    helpEl.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") { e.stopPropagation(); closeHelp(); }
+      else if (e.key === "Tab") { e.preventDefault(); close.focus(); } // single control: trap on it
+    });
+    document.body.appendChild(helpEl);
+    requestAnimationFrame(function () { helpEl.classList.add("show"); });
+    helpOpener = document.activeElement;
+    close.focus();
+  }
+  var helpOpener = null;
+  function closeHelp() {
+    if (!helpEl) return;
+    var node = helpEl; helpEl = null;
+    node.classList.remove("show");
+    setTimeout(function () { node.remove(); }, 180);
+    if (helpOpener && document.contains(helpOpener) && helpOpener.focus) helpOpener.focus();
+    helpOpener = null;
+  }
+
   function renderSidebar() {
     var savedScroll = sidebar.scrollTop; // a full rebuild otherwise jumps to top
     list.innerHTML = "";
     var items = filtered();
     if (!items.length) {
-      list.appendChild(
-        el("p", {
-          class: "empty",
-          text:
-            filter === "open"
-              ? "No open comments. Select text in the doc to add one."
-              : filter === "resolved"
-                ? "No resolved comments yet."
-                : "No orphaned comments — every note still has its place.",
-        })
-      );
+      list.appendChild(emptyState());
       return;
     }
     items.forEach(function (t) {
@@ -448,39 +535,52 @@
   }
 
   function card(t) {
+    var tentative = !t.orphaned && t.anchor.confidence > 0 && t.anchor.confidence < 1;
     var c = el("div", {
-      class: "mg-card" + (t.orphaned ? " orphan" : "") + (t.id === activeTid ? " active" : ""),
+      class: "mg-card" + (t.orphaned ? " orphan" : "") + (tentative ? " tentative" : "") + (t.id === activeTid ? " active" : ""),
       "data-tid": String(t.id),
       id: "mg-thread-" + t.id,
       role: "comment",
       "aria-label": "Comment thread on: " + t.anchor.quote_exact,
     });
+    // hovering a card "peeks" its in-body highlight + gutter marker (and vice-versa)
+    c.addEventListener("mouseenter", function () { peek(t.id, true); });
+    c.addEventListener("mouseleave", function () { peek(t.id, false); });
 
     var qText = t.anchor.quote_exact;
     if (t.anchor.end_block_id && t.anchor.end_block_id !== t.anchor.block_id && t.anchor.quote_tail) {
       qText = t.anchor.quote_exact + " … " + t.anchor.quote_tail; // multi-block: head … tail
     }
-    var quote = el("div", { class: "mg-quote", text: qText });
-    quote.addEventListener("click", function () {
-      activate(t.id, true);
-    });
+    var quote = el("div", { class: "mg-quote", role: "button", tabindex: "0", text: qText, title: "Jump to this passage" });
+    function jump() { activate(t.id, true, true); }
+    quote.addEventListener("click", jump);
+    quote.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); jump(); } });
     c.appendChild(quote);
+
+    if (tentative) {
+      c.appendChild(el("div", { class: "mg-tentative", text: "The text moved — this anchor was relocated. Check it still fits." }));
+    }
 
     var msgs = el("div", { class: "mg-msgs" });
     (t.comments || []).forEach(function (m) {
       var meta = el(
         "div",
         { class: "mg-meta" },
-        el("span", { class: "mg-author", text: authorLabel(m.author) }),
+        el("span", { class: "mg-author author-" + (m.author === "ai" ? "ai" : "human"), text: authorLabel(m.author) }),
         m.author === "ai" ? el("span", { class: "mg-ai", text: "ai" }) : null,
-        el("span", { text: rel(m.created_at) })
+        timeEl(m.created_at)
       );
       msgs.appendChild(el("div", { class: "mg-msg" }, meta, el("div", { class: "mg-body", text: m.body })));
     });
     c.appendChild(msgs);
 
-    // reply box (draft survives sidebar rebuilds; Enter sends, Shift+Enter = newline)
-    var input = el("textarea", { class: "mg-input", rows: "1", placeholder: "Reply… (Enter to send)", "aria-label": "Reply" });
+    if (t.status === "resolved" && t.resolved_at) {
+      c.appendChild(el("div", { class: "mg-resolved-note" },
+        "Resolved" + (t.resolved_by ? " by " + authorLabel(t.resolved_by) : "") + " · ", timeEl(t.resolved_at)));
+    }
+
+    // reply box: auto-grows, Enter (Shift+Enter = newline) sends; button disabled when empty
+    var input = el("textarea", { class: "mg-input mg-grow", rows: "1", placeholder: "Reply… (Enter to send)", "aria-label": "Reply to comment on: " + t.anchor.quote_exact });
     input.value = drafts[t.id] || "";
     var send = el("button", {
       class: "mg-btn primary",
@@ -491,17 +591,33 @@
         if (body) reply(t.id, body);
       },
     });
-    input.addEventListener("input", function () {
-      drafts[t.id] = input.value;
-    });
+    function syncSend() { send.disabled = input.value.trim() === ""; }
+    function grow() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 200) + "px"; }
+    input.addEventListener("input", function () { drafts[t.id] = input.value; syncSend(); grow(); });
     input.addEventListener("keydown", function (e) {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        send.click();
-      }
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send.click(); }
     });
-    c.appendChild(el("div", { class: "mg-reply" }, input, el("div", { class: "mg-card-foot" }, statusChip(t), spacer(), actions(t), send)));
+    syncSend();
+
+    var copy = el("button", { class: "mg-btn ghost", type: "button", text: "Copy link", title: "Copy a link to this comment", onclick: function () { copyThreadLink(t.id); } });
+    c.appendChild(el("div", { class: "mg-reply" }, input, el("div", { class: "mg-card-foot" }, statusChip(t), spacer(), copy, actions(t), send)));
     return c;
+  }
+
+  // peek: emphasise a thread's highlight + gutter marker on card/marker hover
+  function peek(tid, on) {
+    article.querySelectorAll('mark.mg-hl[data-tid="' + tid + '"]').forEach(function (m) { m.classList.toggle("peek", on); });
+    var mk = gutter.querySelector('.mg-marker[data-tid="' + tid + '"]');
+    if (mk) mk.classList.toggle("peek", on);
+  }
+
+  function copyThreadLink(tid) {
+    var url = location.origin + location.pathname + "#mg-thread-" + tid;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(function () { toast("Link to comment copied"); }, function () { toast("Couldn’t copy link", { error: true }); });
+    } else {
+      toast("Clipboard unavailable", { error: true });
+    }
   }
 
   function spacer() {
@@ -852,12 +968,26 @@
     if (!h) { h = el("div", { id: "mg-toasts", "aria-live": "polite" }); document.body.appendChild(h); }
     return h;
   }
-  function toast(msg) {
-    var n = el("div", { class: "mg-toast", role: "status", text: msg });
-    toastHost().appendChild(n); // a column host so multiple toasts stack, not overlap
+  // toast(msg, {error, action:{label,onClick}, duration}) — a column host stacks them.
+  // Errors announce assertively; an optional action button (e.g. Undo) keeps it longer.
+  function toast(msg, opts) {
+    opts = opts || {};
+    var n = el("div", { class: "mg-toast" + (opts.error ? " error" : "") });
+    if (opts.error) n.setAttribute("role", "alert");
+    n.appendChild(el("span", { class: "mg-toast-msg", text: msg }));
+    var timer;
+    function close() { clearTimeout(timer); n.classList.remove("show"); setTimeout(function () { n.remove(); }, 200); }
+    if (opts.action) {
+      var b = el("button", { class: "mg-toast-act", type: "button", text: opts.action.label });
+      b.addEventListener("click", function () { close(); opts.action.onClick(); });
+      n.appendChild(b);
+    }
+    toastHost().appendChild(n);
     requestAnimationFrame(function () { n.classList.add("show"); });
-    setTimeout(function () { n.remove(); }, 4000);
+    timer = setTimeout(close, opts.duration || (opts.error ? 6000 : opts.action ? 6000 : 3500));
+    return { close: close };
   }
+  window.__mgToast = function (m) { toast(m); }; // used by the shell chrome (e.g. copy-link)
   function composerError(msg) {
     var pop = document.getElementById("mg-composer");
     if (!pop) { toast(msg); return; }
@@ -913,21 +1043,44 @@
       .catch(function () { toast("Reply failed — server unreachable."); })
       .then(function () { done(key); });
   }
-  function setStatus(tid, status) {
+  function setStatus(tid, status, isUndo) {
     var key = "status:" + tid;
     if (!busy(key)) return;
+    // optimistic in-place cue: the live highlight fades amber→muted immediately
+    // (the reload repaints to the same state), so resolve feels instant
+    article.querySelectorAll('mark.mg-hl[data-tid="' + tid + '"]').forEach(function (m) {
+      m.classList.toggle("resolved", status === "resolved");
+    });
     postJSON("/api/threads/" + tid, { status: status, by: "human" }, "PATCH")
       .then(function (r) {
-        if (!r.ok) { toast("Update failed (server " + r.status + ")."); return; }
+        // revert the optimistic highlight by re-syncing from the server on failure
+        if (!r.ok) { toast("Update failed (server " + r.status + ").", { error: true }); return loadThen(); }
         // activate AFTER the reload/render so the thread follows to its new tab
         // (instead of silently vanishing) and stays the keyboard target
         return loadThen().then(function () {
           activate(tid, true);
-          toast(status === "resolved" ? "Resolved" : "Reopened");
+          if (isUndo) { toast(status === "resolved" ? "Resolved" : "Reopened"); return; }
+          var undoTo = status === "resolved" ? "open" : "resolved";
+          toast(status === "resolved" ? "Resolved" : "Reopened", {
+            action: { label: "Undo", onClick: function () { setStatus(tid, undoTo, true); } },
+          });
+          maybeCelebrate();
         });
       })
-      .catch(function () { toast("Update failed — server unreachable."); })
+      .catch(function () { toast("Update failed — server unreachable.", { error: true }); })
       .then(function () { done(key); });
+  }
+
+  // a quiet flourish when the last open thread is resolved — the emotional peak.
+  // Reveal the clean state on the Open tab rather than following the thread away.
+  function maybeCelebrate() {
+    var open = threads.filter(function (t) { return !t.orphaned && t.status !== "resolved"; }).length;
+    if (open === 0 && threads.length > 0) {
+      filter = "open";
+      activeTid = null; // the just-resolved thread is hidden on this tab; don't keep it as the j/k/e target
+      syncTabs();
+      renderSidebar(); // shows the "The manuscript is clean." empty state
+    }
   }
   function loadThen(after) {
     // own terminal handling: a failed REFRESH must not reject into the mutation's
@@ -994,6 +1147,7 @@
     }
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
     if (document.getElementById("mg-composer")) return; // modal composer: no background shortcuts
+    if (helpEl && e.key !== "?") return; // help overlay open: only ? is meaningful
 
     switch (e.key) {
       case "c": {
@@ -1020,6 +1174,9 @@
       }
       case "e":
         toggleActive();
+        break;
+      case "?":
+        openHelp();
         break;
       case "Enter":
         if (activeTid != null) activate(activeTid, true, true);
@@ -1053,6 +1210,8 @@
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden && !document.getElementById("mg-composer")) load();
   });
+
+  setInterval(tickTimes, 60000); // keep relative timestamps fresh
 
   load();
 })();

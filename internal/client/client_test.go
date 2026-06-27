@@ -80,6 +80,18 @@ func TestClientRoundTrip(t *testing.T) {
 		t.Error("thread should resolve cleanly, not orphan")
 	}
 
+	// Reply adds an ai comment WITHOUT changing status (the agent answering back)
+	if _, err := c.Reply(ctx, th.ID, "ai", "a fox is an animal"); err != nil {
+		t.Fatalf("Reply: %v", err)
+	}
+	afterReply, _ := c.Comments(ctx, "d", "open")
+	if len(afterReply) != 1 || afterReply[0].Status != store.StatusOpen {
+		t.Fatalf("thread should stay open after a reply, got %+v", afterReply)
+	}
+	if n := len(afterReply[0].Comments); n != 2 || afterReply[0].Comments[1].Author != "ai" {
+		t.Fatalf("want 2 comments ending in an ai reply, got %d", n)
+	}
+
 	// SetStatus resolves it
 	rt, err := c.SetStatus(ctx, th.ID, store.StatusResolved, "ai", "it's a metaphor")
 	if err != nil {

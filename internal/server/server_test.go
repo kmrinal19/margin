@@ -135,6 +135,42 @@ func TestAPICreateAndList(t *testing.T) {
 	}
 }
 
+func TestErrorPagesAndMethodHandling(t *testing.T) {
+	ts, _, _ := newTestServer(t)
+
+	// a missing doc → templated HTML 404, not bare plaintext
+	resp, err := http.Get(ts.URL + "/doc/no-such-doc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("missing doc status = %d, want 404", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("404 content-type = %q, want text/html", ct)
+	}
+	if !strings.Contains(string(body), "No such manuscript") {
+		t.Error("404 body is not the templated error page")
+	}
+
+	// a wrong method on a real route → 405 with an Allow header (the catch-all
+	// must NOT mask this as a 404)
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/docs", nil)
+	resp2, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp2.Body.Close()
+	if resp2.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("POST to a GET route = %d, want 405", resp2.StatusCode)
+	}
+	if resp2.Header.Get("Allow") == "" {
+		t.Error("405 response is missing the Allow header")
+	}
+}
+
 func TestReanchorHealsAfterEdit(t *testing.T) {
 	ts, docs, rnd := newTestServer(t)
 	th := createComment(t, ts, rnd, "opens in March", "note")
