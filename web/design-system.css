@@ -303,6 +303,26 @@ blockquote{margin:var(--s5) 0;padding:var(--s2) var(--s5);border-left:2px solid 
 .doc-list .d-counts{display:flex;flex-direction:column;align-items:flex-end;gap:var(--s2);flex:0 0 auto;padding-top:.2rem;}
 .badge.orphan{background:var(--warn-bg);color:var(--warn-fg);border-color:var(--warn-bd);}
 .badge.done{background:transparent;color:var(--good-fg);border-color:var(--good-bd);}
+
+/* nested folder tree — collapsible <details> rows */
+.doc-tree{margin:var(--s6) 0;}
+.doc-tree .doc-list{margin:0;}
+details.dir{border-bottom:1px solid var(--border);}
+details.dir .dir-body{border-bottom:0;}
+/* indent each nested level so depth reads at a glance */
+details.dir .dir-body{padding-left:var(--s4);border-left:1px solid var(--border);margin-left:calc(var(--s3) + 2px);}
+.dir-head{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s2);cursor:pointer;list-style:none;
+  font-family:var(--sans);font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;letter-spacing:var(--track-label);color:var(--muted);}
+.dir-head::-webkit-details-marker{display:none;}
+/* a chevron that rotates open; reduced-motion users get the rotation instantly */
+.dir-head::before{content:"";width:.5rem;height:.5rem;flex:0 0 auto;border-right:1.5px solid var(--faint);border-bottom:1.5px solid var(--faint);
+  transform:rotate(-45deg);transition:transform .15s ease-out;margin-left:.15rem;}
+details.dir[open]>.dir-head::before{transform:rotate(45deg);}
+.dir-head:hover{color:var(--accent);} .dir-head:hover::before{border-color:var(--accent);}
+.dir-name{flex:1;}
+.dir-counts{display:flex;gap:var(--s2);}
+.dir-counts .badge{font-variant-numeric:tabular-nums lining-nums;}
+details.dir[open]>.dir-head .dir-counts{opacity:.55;} /* expanded → per-doc badges carry the detail */
 .empty{color:var(--muted);border:1px dashed var(--border-strong);border-radius:var(--radius);padding:var(--s8) var(--s6);text-align:center;margin-top:var(--s7);}
 .empty .empty-mark{font-size:2rem;color:var(--accent);opacity:.7;margin-bottom:var(--s3);}
 .empty .empty-head{font-family:var(--serif);font-style:italic;font-size:1.4rem;color:var(--ink);margin:0 0 var(--s2);}

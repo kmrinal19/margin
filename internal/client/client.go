@@ -94,11 +94,21 @@ func (c *Client) Comments(ctx context.Context, slug, status string) ([]store.Thr
 	var out struct {
 		Threads []store.Thread `json:"threads"`
 	}
-	path := "/api/docs/" + url.PathEscape(slug) + "/comments?status=" + url.QueryEscape(status)
+	path := "/api/comments/" + escapeSlug(slug) + "?status=" + url.QueryEscape(status)
 	if err := c.do(ctx, http.MethodGet, path, nil, &out); err != nil {
 		return nil, err
 	}
 	return out.Threads, nil
+}
+
+// escapeSlug percent-escapes each path segment of a (possibly nested) slug while
+// keeping the "/" separators, so "payments/refunds" stays a multi-segment path.
+func escapeSlug(slug string) string {
+	parts := strings.Split(slug, "/")
+	for i, p := range parts {
+		parts[i] = url.PathEscape(p)
+	}
+	return strings.Join(parts, "/")
 }
 
 // Reply posts a comment to a thread without changing its status (the agent

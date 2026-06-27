@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -93,12 +94,71 @@ func New() (*Renderer, error) {
 }
 
 type indexData struct {
-	Docs []DocInfo
+	Tree  *DocTree
+	Empty bool
+}
+
+// DocTree is a folder node in the nested document index. The root node has an
+// empty Name/Path; its Docs are the top-level docs and its Dirs the subfolders.
+type DocTree struct {
+	Name        string     // folder segment, hyphens turned to spaces for display ("" at root)
+	Path        string     // full folder path, the localStorage collapse key ("" at root)
+	Docs        []DocInfo  // docs directly in this folder
+	Dirs        []*DocTree // subfolders
+	OpenCount   int        // aggregate over this subtree (so a collapsed folder still signals work)
+	OrphanCount int
+}
+
+// buildDocTree groups a flat, slug-sorted []DocInfo into a folder tree by their
+// "/"-separated slugs, then sorts and rolls up descendant counts.
+func buildDocTree(docs []DocInfo) *DocTree {
+	root := &DocTree{}
+	for _, d := range docs {
+		segs := strings.Split(d.Slug, "/")
+		node := root
+		for i := 0; i < len(segs)-1; i++ {
+			seg := segs[i]
+			var child *DocTree
+			for _, c := range node.Dirs {
+				if c.Name == strings.ReplaceAll(seg, "-", " ") {
+					child = c
+					break
+				}
+			}
+			if child == nil {
+				p := seg
+				if node.Path != "" {
+					p = node.Path + "/" + seg
+				}
+				child = &DocTree{Name: strings.ReplaceAll(seg, "-", " "), Path: p}
+				node.Dirs = append(node.Dirs, child)
+			}
+			node = child
+		}
+		node.Docs = append(node.Docs, d)
+	}
+	root.finalize()
+	return root
+}
+
+// finalize sorts folders (then docs are already slug-sorted) and rolls up counts.
+func (t *DocTree) finalize() {
+	sort.Slice(t.Dirs, func(i, j int) bool { return t.Dirs[i].Name < t.Dirs[j].Name })
+	for _, d := range t.Docs {
+		t.OpenCount += d.OpenCount
+		t.OrphanCount += d.OrphanCount
+	}
+	for _, c := range t.Dirs {
+		c.finalize()
+		t.OpenCount += c.OpenCount
+		t.OrphanCount += c.OrphanCount
+	}
 }
 
 // Index writes the document index page.
 func (r *Renderer) Index(w io.Writer, docs []DocInfo) error {
-	if err := r.tmpl.ExecuteTemplate(w, "index.html.tmpl", indexData{Docs: docs}); err != nil {
+	data := indexData{Tree: buildDocTree(docs), Empty: len(docs) == 0}
+	if err := r.tmpl.ExecuteTemplate(w, "index.html.tmpl", data); err != nil {
 		return fmt.Errorf("render index: %w", err)
 	}
 	return nil

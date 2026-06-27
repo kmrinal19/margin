@@ -25,10 +25,24 @@ import (
 	"github.com/kmrinal19/margin/web"
 )
 
-var slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+var slugSegRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-// validSlug reports whether s is a safe document slug (maps to docs/<slug>.md).
-func validSlug(s string) bool { return slugRe.MatchString(s) }
+// validSlug reports whether s is a safe document slug. A slug is one or more
+// "/"-joined segments, each [a-z0-9][a-z0-9-]*, mapping to docs/<slug>.md. This
+// allows nested docs (e.g. "payments/refunds") while rejecting empty segments,
+// leading/trailing/double slashes, and any "." segment (so "..", path traversal,
+// is impossible at validation — docPath's containment check is a second guard).
+func validSlug(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, seg := range strings.Split(s, "/") {
+		if !slugSegRe.MatchString(seg) {
+			return false
+		}
+	}
+	return true
+}
 
 // IsLoopbackHost reports whether host is a loopback bind address. margin is
 // offline-only, so the CLI refuses non-loopback hosts unless explicitly overridden.
@@ -68,7 +82,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) buildHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleIndex)
-	mux.HandleFunc("GET /doc/{slug}", s.handleDoc)
+	mux.HandleFunc("GET /doc/{slug...}", s.handleDoc)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(web.Static)))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -81,8 +95,11 @@ func (s *Server) buildHandler() http.Handler {
 
 	// REST API (§10) — shared by the browser widget and the CLI client.
 	mux.HandleFunc("GET /api/docs", s.handleListDocs)
-	mux.HandleFunc("GET /api/docs/{slug}/comments", s.handleListComments)
-	mux.HandleFunc("POST /api/docs/{slug}/comments", s.handleCreateComment)
+	// The slug is a trailing wildcard so nested doc paths (e.g. payments/refunds)
+	// work — Go's ServeMux only allows a multi-segment {…} as the final element,
+	// which is why the per-doc comment routes put the slug last.
+	mux.HandleFunc("GET /api/comments/{slug...}", s.handleListComments)
+	mux.HandleFunc("POST /api/comments/{slug...}", s.handleCreateComment)
 	mux.HandleFunc("POST /api/threads/{id}/replies", s.handleReply)
 	mux.HandleFunc("PATCH /api/threads/{id}", s.handlePatchThread)
 
@@ -276,26 +293,38 @@ func filterByStatus(threads []store.Thread, filter store.Filter) []store.Thread 
 	return out
 }
 
-// listDocs scans the docs directory for renderable Markdown files.
+// listDocs walks the docs directory (recursively) for renderable Markdown files.
+// A file at docs/<a>/<b>.md becomes the nested slug "<a>/<b>".
 func (s *Server) listDocs() ([]render.DocInfo, error) {
-	entries, err := os.ReadDir(s.cfg.DocsDir)
+	base, err := filepath.Abs(s.cfg.DocsDir)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
-		}
 		return nil, err
 	}
 	var docs []render.DocInfo
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
+	walkErr := filepath.WalkDir(base, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-		slug := strings.TrimSuffix(e.Name(), ".md")
+		if d.IsDir() {
+			// skip hidden / dot directories (e.g. .git, .obsidian)
+			if path != base && strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".md") {
+			return nil
+		}
+		rel, err := filepath.Rel(base, path)
+		if err != nil {
+			return nil
+		}
+		slug := strings.TrimSuffix(filepath.ToSlash(rel), ".md")
 		if !validSlug(slug) {
-			continue
+			return nil
 		}
 		info := render.DocInfo{Slug: slug, Title: slug}
-		if src, err := os.ReadFile(filepath.Join(s.cfg.DocsDir, e.Name())); err == nil {
+		if src, err := os.ReadFile(path); err == nil {
 			m := s.rnd.DocMeta(slug, src)
 			info.Title = m.Title
 			info.Date = m.Date
@@ -304,6 +333,13 @@ func (s *Server) listDocs() ([]render.DocInfo, error) {
 			info.ReadMins = m.ReadMins
 		}
 		docs = append(docs, info)
+		return nil
+	})
+	if walkErr != nil {
+		if errors.Is(walkErr, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, walkErr
 	}
 	sort.Slice(docs, func(i, j int) bool { return docs[i].Slug < docs[j].Slug })
 	return docs, nil

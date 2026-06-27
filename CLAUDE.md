@@ -34,7 +34,8 @@ architecture decision changes, update `PRD.md` rather than silently diverging.
 - `internal/store/` — SQLite (two-pool) schema + queries.
 - `internal/client/` — the CLI's HTTP client to the API.
 - `web/` — embedded assets (`design-system.css`, `widget.js`, `shell.html.tmpl`) via `//go:embed`.
-- `docs/` — authored Markdown docs (committed). `data/` — SQLite DB (gitignored).
+- `docs/` — authored Markdown docs (committed); may be **nested** in subfolders
+  (slug = path, e.g. `payments/refunds`). `data/` — SQLite DB (gitignored).
 
 ## Hard invariants (do not break)
 

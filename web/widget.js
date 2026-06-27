@@ -11,7 +11,8 @@
   if (!slug || !article) return; // not a doc page
   article.tabIndex = -1; // focusable programmatically (for focus restore)
 
-  var apiDoc = "/api/docs/" + encodeURIComponent(slug) + "/comments";
+  // nested slugs (e.g. "payments/refunds") keep their "/" separators — escape per segment
+  var apiDoc = "/api/comments/" + slug.split("/").map(encodeURIComponent).join("/");
   var threads = [];
   var filter = "open";
   var activeTid = null;

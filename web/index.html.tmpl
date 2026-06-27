@@ -18,34 +18,28 @@
 <main class="index" id="mg-desk" tabindex="-1">
   <h1 class="doc-title">The desk</h1>
   <p class="lead">Documents awaiting review. Select one to read — your margin notes travel with the words.</p>
-  {{if .Docs}}
-  <ul class="doc-list">
-    {{range .Docs}}
-    <li><a href="/doc/{{.Slug}}">
-      <span class="d-main">
-        <span class="d-title">{{.Title}}</span>
-        {{with .Excerpt}}<span class="d-excerpt">{{.}}</span>{{end}}
-        <span class="d-meta">
-          {{with .Status}}<span class="d-status">{{.}}</span>{{end}}
-          {{with .Date}}<time>{{.}}</time>{{end}}
-          {{if .ReadMins}}<span class="d-read">{{.ReadMins}} min</span>{{end}}
-        </span>
-      </span>
-      <span class="d-counts">
-        {{if gt .OrphanCount 0}}<span class="badge orphan" title="anchors drifted — the doc changed under live comments">{{.OrphanCount}} orphaned</span>{{end}}
-        {{if gt .OpenCount 0}}<span class="badge warn">{{.OpenCount}} open</span>{{end}}
-        {{if and (eq .OpenCount 0) (eq .OrphanCount 0)}}{{if gt .ResolvedCount 0}}<span class="badge done">✓ resolved</span>{{end}}{{end}}
-      </span>
-    </a></li>
-    {{end}}
-  </ul>
-  {{else}}
+  {{if .Empty}}
   <div class="empty">
     <div class="empty-mark">❧</div>
     <p class="empty-head">The desk is clear.</p>
     <p>Drop a Markdown file in <code>docs/</code> and reload to begin a review.</p>
   </div>
+  {{else}}
+  <div class="doc-tree">{{template "doctree" .Tree}}</div>
   {{end}}
 </main>
+<script>
+/* remember which folders are collapsed (per data-dir key) across visits */
+(function () {
+  var dirs = document.querySelectorAll("details.dir[data-dir]");
+  dirs.forEach(function (d) {
+    var key = "mg-dir:" + d.getAttribute("data-dir");
+    try { if (localStorage.getItem(key) === "0") d.open = false; } catch (e) {}
+    d.addEventListener("toggle", function () {
+      try { localStorage.setItem(key, d.open ? "1" : "0"); } catch (e) {}
+    });
+  });
+})();
+</script>
 </body>
 </html>

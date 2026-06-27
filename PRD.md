@@ -58,7 +58,7 @@ How we got here (so the rationale isn't lost):
 
 ## 6. Core flows
 
-- **A — Author & serve.** Agent writes `docs/<slug>.md` → `margin serve` → human opens `http://localhost:<port>/doc/<slug>`.
+- **A — Author & serve.** Agent writes `docs/<slug>.md` → `margin serve` → human opens `http://localhost:<port>/doc/<slug>` (slug may be nested).
 - **B — Review.** Human selects text → comment popover → anchored thread created → replies → resolve/reopen.
 - **C — AI round-trip.** Agent runs `margin comments <slug> --open --json` → compact JSON (thread id, block id, quote, comment) → locates the span in the `.md` → edits → `margin resolve <thread-id> --note "…"` → human reloads, sees resolved threads + any new orphans.
 - **D — Share (later).** `margin export <slug> --inline` → a portable single-file HTML for someone outside the repo.
@@ -175,7 +175,7 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE doc (
   id            INTEGER PRIMARY KEY,
-  slug          TEXT NOT NULL UNIQUE,      -- filename stem; docs/<slug>.md
+  slug          TEXT NOT NULL UNIQUE,      -- doc path stem; docs/<slug>.md (slug may be nested, e.g. a/b)
   title         TEXT,
   last_rendered TEXT                       -- ISO8601, informational
 );
@@ -219,15 +219,18 @@ Notes: status lives on the **thread** (resolve is thread-level). Anchor offsets 
 
 | Method | Route | Purpose |
 |---|---|---|
-| `GET` | `/` | Doc index (list + open-comment counts) |
-| `GET` | `/doc/{slug}` | Rendered HTML (design CSS + widget JS), render-on-read |
+| `GET` | `/` | Doc index — a collapsible folder **tree** (nested docs) + per-doc counts |
+| `GET` | `/doc/{slug...}` | Rendered HTML (design CSS + widget JS), render-on-read |
 | `GET` | `/static/{...}` | Embedded assets |
-| `GET` | `/api/docs/{slug}/comments?status=open` | List threads (anchors re-resolved server-side) |
-| `POST` | `/api/docs/{slug}/comments` | Create thread + anchor + first comment |
+| `GET` | `/api/docs` | List docs (slugs, titles, open/resolved/orphan counts, meta) |
+| `GET` | `/api/comments/{slug...}?status=open` | List threads (anchors re-resolved server-side) |
+| `POST` | `/api/comments/{slug...}` | Create thread + anchor + first comment |
 | `POST` | `/api/threads/{id}/replies` | Add a reply |
 | `PATCH` | `/api/threads/{id}` | Resolve / reopen (`{status, by, note?}`) |
 
-`POST /api/docs/{slug}/comments` body:
+**Nested docs.** A slug is one or more `/`-joined segments, each `[a-z0-9][a-z0-9-]*` (e.g. `payments/refunds` ↔ `docs/payments/refunds.md`); `.` segments are rejected so a slug can never escape `docs/`. The per-doc comment routes carry the slug as a **trailing wildcard** (`{slug...}`) because Go's `ServeMux` only allows a multi-segment match as the final path element — hence `/api/comments/{slug...}` rather than `/api/docs/{slug}/comments`. The desk renders folders as collapsible `<details>` (open state persisted in `localStorage`); a collapsed folder shows its descendants' aggregate open/orphan counts.
+
+`POST /api/comments/{slug...}` body:
 ```json
 { "anchor": {"block_id":"b-1a2b3c4d","quote_exact":"…","quote_prefix":"…","quote_suffix":"…","char_start":12,"char_end":29},
   "body": "…", "author": "human" }
@@ -254,7 +257,7 @@ The client subcommands are thin HTTP calls to a running `serve`. If the server i
 
 - **Offline / local.** No network calls. Bind `127.0.0.1` by default. Serving over localhost is the **enabling decision** (it's what makes `fetch`/`localStorage`/same-origin POST work — a `file://` page can't).
 - **Single binary.** `go build` → one static artifact; assets embedded. No runtime deps beyond `docs/` + `data/`.
-- **Performance.** Render-on-read is sub-millisecond for doc-sized Markdown; no cache-invalidation class of bug. **HTTP:** explicit `http.Server` timeouts (ReadHeader 5s, Read/Write 15s, Idle 120s, `MaxHeaderBytes` 1<<20) + `http.TimeoutHandler(10s)` (shorter than WriteTimeout so the 503 is delivered) + a recover middleware; graceful `Server.Shutdown` on SIGINT/SIGTERM, then WAL checkpoint + close both DB pools. Serve a 304 via ETag/`If-None-Match` on `GET /doc/{slug}` instead of a render cache; reuse a `sync.Pool` of buffers on the render path. Add `mtime`+hash memoization only if a single doc gets huge.
+- **Performance.** Render-on-read is sub-millisecond for doc-sized Markdown; no cache-invalidation class of bug. **HTTP:** explicit `http.Server` timeouts (ReadHeader 5s, Read/Write 15s, Idle 120s, `MaxHeaderBytes` 1<<20) + `http.TimeoutHandler(10s)` (shorter than WriteTimeout so the 503 is delivered) + a recover middleware; graceful `Server.Shutdown` on SIGINT/SIGTERM, then WAL checkpoint + close both DB pools. Serve a 304 via ETag/`If-None-Match` on `GET /doc/{slug...}` instead of a render cache; reuse a `sync.Pool` of buffers on the render path. Add `mtime`+hash memoization only if a single doc gets huge.
 - **Security.** Localhost only in v1; do **not** expose publicly (the dev-grade server isn't hardened). LAN later: bind `0.0.0.0` behind VPN/LAN only, capture a reviewer name for attribution.
 - **Accessibility.** Design system meets WCAG AA (most pairs AAA); visible focus; reduced-motion; print. The comment overlay uses **W3C ARIA Annotations** — each `<mark>` links to its thread via `aria-details`, and the thread container is `role="comment"` with an accessible name — so screen readers can reach the highlight↔thread relationship (and status must never be conveyed by color alone, WCAG 1.4.1).
 - **Token efficiency.** Structured open-comments API; `(block_id, quote)` removes the need to re-read docs; chrome lives in embedded assets, never re-emitted.
