@@ -94,6 +94,7 @@ func (s *Server) buildHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /doc/{slug...}", s.handleDoc)
+	mux.HandleFunc("GET /download/{slug...}", s.handleDownload)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(web.Static)))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")

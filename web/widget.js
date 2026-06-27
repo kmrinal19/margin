@@ -177,6 +177,8 @@
   if (toggle) toggle.addEventListener("click", toggleSidebar);
   var docNoteBtn = document.getElementById("mg-docnote");
   if (docNoteBtn) docNoteBtn.addEventListener("click", openDocComposer);
+  var downloadBtn = document.getElementById("mg-download");
+  if (downloadBtn) downloadBtn.addEventListener("click", toggleDownloadMenu);
 
   // ── load + render ──────────────────────────────────────────────────
   function load() {
@@ -983,6 +985,61 @@
   function hidePill() {
     pill.classList.remove("show");
     pill.classList.remove("below");
+  }
+
+  // ── download menu (masthead) ───────────────────────────────────────
+  function slugPath() { return slug.split("/").map(encodeURIComponent).join("/"); }
+  var dlMenu = null;
+  function closeDownloadMenu() {
+    if (!dlMenu) return;
+    dlMenu.remove();
+    dlMenu = null;
+    var b = document.getElementById("mg-download");
+    if (b) b.setAttribute("aria-expanded", "false");
+    document.removeEventListener("click", onDlDocClick, true);
+    document.removeEventListener("keydown", onDlKey, true);
+  }
+  function onDlDocClick(e) {
+    var b = document.getElementById("mg-download");
+    if (dlMenu && !dlMenu.contains(e.target) && e.target !== b && !b.contains(e.target)) closeDownloadMenu();
+  }
+  function onDlKey(e) { if (e.key === "Escape") { closeDownloadMenu(); var b = document.getElementById("mg-download"); if (b) b.focus(); } }
+  function toggleDownloadMenu() {
+    if (dlMenu) { closeDownloadMenu(); return; }
+    var btn = document.getElementById("mg-download");
+    var inc = el("input", { type: "checkbox", id: "mg-dl-comments" });
+    var label = el("label", { class: "mg-dl-toggle", for: "mg-dl-comments" }, inc, el("span", { text: "Include review comments" }));
+    function c() { return inc.checked ? "1" : "0"; }
+    function fileItem(name, fmt) {
+      return el("button", { class: "mg-menu-item", type: "button", role: "menuitem", text: name,
+        onclick: function () { downloadDoc(fmt, c()); closeDownloadMenu(); } });
+    }
+    dlMenu = el("div", { class: "mg-dlmenu", role: "menu" },
+      label, el("div", { class: "mg-dl-sep" }),
+      fileItem("Markdown", "md"), fileItem("HTML", "html"),
+      el("button", { class: "mg-menu-item", type: "button", role: "menuitem", text: "PDF (print)",
+        onclick: function () { var withC = inc.checked; closeDownloadMenu(); toPDF(withC); } }));
+    document.body.appendChild(dlMenu);
+    var r = btn.getBoundingClientRect();
+    dlMenu.style.top = r.bottom + 6 + "px";
+    dlMenu.style.right = Math.max(8, window.innerWidth - r.right) + "px";
+    btn.setAttribute("aria-expanded", "true");
+    setTimeout(function () { document.addEventListener("click", onDlDocClick, true); }, 0);
+    document.addEventListener("keydown", onDlKey, true);
+  }
+  function downloadDoc(format, comments) {
+    var a = el("a", { href: "/download/" + slugPath() + "?format=" + format + "&comments=" + comments });
+    a.setAttribute("download", "");
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+  function toPDF(withComments) {
+    // clean doc → print the live page (the @media print sheet hides chrome/sidebar).
+    // with comments → open the self-contained HTML export (comments inline) and print it.
+    if (!withComments) { window.print(); return; }
+    var w = window.open("/download/" + slugPath() + "?format=html&comments=1&inline=1", "_blank");
+    if (w) w.addEventListener("load", function () { try { w.focus(); w.print(); } catch (e) {} });
   }
 
   function openComposer() {
