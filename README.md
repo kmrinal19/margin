@@ -9,17 +9,49 @@ them — a tight human-↔-AI review loop, served over `http://127.0.0.1`, no Sa
 
 The full design spec lives in **[PRD.md](./PRD.md)**.
 
+## Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kmrinal19/margin/main/install.sh | sh
+```
+
+One command, no Go toolchain needed — it downloads the right prebuilt static binary
+for your OS/arch from the [Releases](https://github.com/kmrinal19/margin/releases),
+verifies its checksum, and installs it. (Installing this way avoids the macOS
+Gatekeeper / Windows SmartScreen prompt a browser download would trigger.)
+
+<details><summary>Other ways</summary>
+
+```sh
+go install github.com/kmrinal19/margin/cmd/margin@latest   # if you have Go
+# or build from source:
+CGO_ENABLED=0 go build -o margin ./cmd/margin
+```
+</details>
+
 ## Quick start
 
 ```sh
-# build the single static binary (pure-Go, no cgo)
-CGO_ENABLED=0 go build -o margin ./cmd/margin
-
-# serve the docs in ./docs
-./margin serve            # → http://127.0.0.1:8848
+margin serve              # → http://127.0.0.1:8848 (reviews ./docs)
 ```
 
 Open `http://127.0.0.1:8848`, pick a doc, **select any text** to leave a comment.
+
+## Let your AI agent take over
+
+margin speaks the **Model Context Protocol**, so any MCP-capable agent (Claude Code,
+Codex, Cursor, Gemini CLI, Windsurf, …) can read and resolve your comments natively —
+with **zero edits to your repo or instruction files**. One command wires them up:
+
+```sh
+margin agent-setup        # registers margin's tools in each installed agent's own config
+```
+
+Then just tell your agent *"address the review comments."* It calls margin's tools
+(`open_comments`, `resolve_thread`, `reply_thread`, …) and drives the loop. Under the
+hood that's `margin mcp`, a stdio MCP server built into the same binary — offline, no
+extra process to manage. Any agent that can run a shell command can also use the CLI
+loop below directly.
 
 ## The review loop
 
@@ -42,10 +74,13 @@ never silently lost, never mis-attached.
 ```
 margin serve    [--port 8848] [--host 127.0.0.1] [--docs ./docs] [--data ./data]
 margin docs                                  list docs + open-comment counts
-margin comments <slug> [--all] [--json]      list threads (token-minimal with --json)
+margin comments <slug> [--all] [--json [--full]]   list threads (token-minimal with --json)
+margin reply    <thread-id> --note "…"       reply without resolving (agent)
 margin resolve  <thread-id> [--note "…"]     resolve a thread
 margin reopen   <thread-id>                  reopen a resolved thread
 margin export   <slug> [--out file.html]     write a portable, self-contained HTML
+margin mcp      [--docs ./docs] [--data ./data]   run as a stdio MCP server (agents)
+margin agent-setup [--print-only]            register margin's MCP tools with installed agents
 ```
 
 Client subcommands talk to a running `margin serve` (default `http://127.0.0.1:8848`;

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.kmrinal19/margin",
+  "description": "Local, offline doc review: read and resolve a human reviewer's anchored inline comments on your Markdown docs.",
+  "repository": {
+    "url": "https://github.com/kmrinal19/margin",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/kmrinal19/margin/releases/latest/download/margin_mcpb_manifest.json",
+      "transport": { "type": "stdio" }
+    }
+  ]
+}

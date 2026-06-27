@@ -63,5 +63,10 @@ func cmdServe(args []string) error {
 		Debug:   *debug,
 	}, log, rnd, st)
 
+	// A human-friendly hint (stderr; stdout stays clean). Points reviewers at the
+	// one-time agent wiring so they never have to learn the commands.
+	fmt.Fprintf(os.Stderr, "\n  Reviewing at http://%s:%d  — leave inline comments in the browser.\n", *host, *port)
+	fmt.Fprintf(os.Stderr, "  To let your AI agent address them, run once:  margin agent-setup\n\n")
+
 	return srv.Run(ctx)
 }

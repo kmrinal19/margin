@@ -9,6 +9,21 @@ import (
 	"github.com/kmrinal19/margin/internal/store"
 )
 
+// ResolveAll re-resolves every thread's anchor against doc WITHOUT persisting any
+// heal — for read-only consumers (the CLI export, the MCP server) that just need
+// freshly-resolved positions + orphaned flags. The server uses Resolve directly
+// so it can batch heal writes; this is the no-write convenience for the rest.
+func ResolveAll(doc *anchor.Doc, threads []store.Thread) []store.Thread {
+	out := make([]store.Thread, len(threads))
+	for i, t := range threads {
+		newA, orphaned := Resolve(doc, t.Anchor)
+		t.Anchor = newA
+		t.Orphaned = orphaned
+		out[i] = t
+	}
+	return out
+}
+
 // Resolve re-resolves a (possibly multi-block, possibly document-level) anchor
 // against doc, returning the healed anchor and whether it is now orphaned.
 //
