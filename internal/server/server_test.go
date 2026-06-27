@@ -594,6 +594,54 @@ func TestDocLevelResolveCycle(t *testing.T) {
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 
+func TestDownload(t *testing.T) {
+	ts, _, rnd := newTestServer(t)
+	createComment(t, ts, rnd, "main semester fee", "is this the right fee?")
+
+	// get returns (status, content-disposition, content-type, body) — not the
+	// *http.Response, so the body is closed here (and bodyclose stays happy).
+	get := func(url string) (int, string, string, string) {
+		resp, err := http.Get(ts.URL + url)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		return resp.StatusCode, resp.Header.Get("Content-Disposition"), resp.Header.Get("Content-Type"), string(body)
+	}
+
+	// Markdown, clean: the source, as an attachment, no comments appendix
+	_, disp, _, body := get("/download/guide?format=md&comments=0")
+	if !strings.Contains(disp, `attachment; filename="guide.md"`) {
+		t.Errorf("md disposition = %q", disp)
+	}
+	if !strings.Contains(body, "main semester fee") || strings.Contains(body, "Review comments") {
+		t.Error("clean md should be the source without a comments appendix")
+	}
+	// Markdown, with comments: appendix present
+	if _, _, _, body := get("/download/guide?format=md&comments=1"); !strings.Contains(body, "## Review comments") || !strings.Contains(body, "is this the right fee?") {
+		t.Errorf("md+comments missing the appendix:\n%s", body)
+	}
+	// HTML clean vs with-comments
+	if _, _, _, body := get("/download/guide?format=html&comments=0"); strings.Contains(body, "Review comments") {
+		t.Error("clean html should not include the comments section")
+	}
+	if _, _, ct, body := get("/download/guide?format=html&comments=1"); !strings.Contains(body, "Review comments") || !strings.HasPrefix(ct, "text/html") {
+		t.Error("html+comments should include the review snapshot")
+	}
+	// inline disposition (used by the print-to-PDF path)
+	if _, disp, _, _ := get("/download/guide?format=html&comments=1&inline=1"); !strings.HasPrefix(disp, "inline") {
+		t.Errorf("inline disposition = %q", disp)
+	}
+	// bad format → 400, missing doc → 404
+	if code, _, _, _ := get("/download/guide?format=pdf"); code != http.StatusBadRequest {
+		t.Errorf("format=pdf = %d, want 400", code)
+	}
+	if code, _, _, _ := get("/download/nope?format=md"); code != http.StatusNotFound {
+		t.Errorf("missing doc = %d, want 404", code)
+	}
+}
+
 func TestEditComment(t *testing.T) {
 	ts, _, rnd := newTestServer(t)
 	th := createComment(t, ts, rnd, "main semester fee", "origial typo")

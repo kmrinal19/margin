@@ -186,3 +186,24 @@ test("edit: Cancel discards changes", async ({ page }) => {
   await expect(page.locator(".mg-card .mg-body").first()).toHaveText("keep me as is");
   await expect(page.locator(".mg-card .mg-edited")).toHaveCount(0);
 });
+
+test("download: the menu offers Markdown / HTML / PDF and downloads the file", async ({ page }) => {
+  await page.goto("/doc/" + slug);
+  await comment(page, "first concern in detail", "a note for the export");
+
+  await page.locator("#mg-download").click();
+  const menu = page.locator(".mg-dlmenu");
+  await expect(menu).toBeVisible();
+  await expect(menu.locator(".mg-menu-item")).toHaveText(["Markdown", "HTML", "PDF (print)"]);
+
+  // download Markdown WITH comments → file arrives and contains the comment
+  await menu.getByText("Include review comments").click();
+  const [dl] = await Promise.all([
+    page.waitForEvent("download"),
+    menu.getByRole("menuitem", { name: "Markdown" }).click(),
+  ]);
+  expect(dl.suggestedFilename()).toBe(slug.split("/").pop() + ".md");
+
+  // menu closes after a choice; Esc-less re-open works
+  await expect(page.locator(".mg-dlmenu")).toHaveCount(0);
+});

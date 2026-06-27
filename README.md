@@ -41,6 +41,8 @@ margin serve              # → http://127.0.0.1:8848 (reviews ./docs)
 ```
 
 Open `http://127.0.0.1:8848`, pick a doc, **select any text** to leave a comment.
+The masthead **Download** menu exports the doc as Markdown, self-contained HTML, or
+PDF (via your browser's print) — with an optional toggle to embed the review comments.
 
 ## Let your AI agent take over
 

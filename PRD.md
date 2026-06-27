@@ -221,6 +221,7 @@ Notes: status lives on the **thread** (resolve is thread-level). Anchor offsets 
 |---|---|---|
 | `GET` | `/` | Doc index — a collapsible folder **tree** (nested docs) + per-doc counts |
 | `GET` | `/doc/{slug...}` | Rendered HTML (design CSS + widget JS), render-on-read |
+| `GET` | `/download/{slug...}?format=md\|html&comments=0\|1` | Download the doc as Markdown (source, optional comments appendix) or self-contained HTML (optional review snapshot). PDF is client-side (browser print). |
 | `GET` | `/static/{...}` | Embedded assets |
 | `GET` | `/api/docs` | List docs (slugs, titles, open/resolved/orphan counts, meta) |
 | `GET` | `/api/comments/{slug...}?status=open` | List threads (anchors re-resolved server-side) |
