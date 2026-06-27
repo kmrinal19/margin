@@ -29,6 +29,7 @@ type createCommentReq struct {
 	Anchor anchorReq `json:"anchor"`
 	Body   string    `json:"body"`
 	Author string    `json:"author"`
+	Scope  string    `json:"scope"` // "doc" → a document-level note with no text anchor
 }
 
 type replyReq struct {
@@ -92,20 +93,26 @@ func (s *Server) handleCreateComment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "comment body is required")
 		return
 	}
-	if strings.TrimSpace(req.Anchor.QuoteExact) == "" {
-		writeError(w, http.StatusBadRequest, "anchor.quote_exact is required")
-		return
-	}
 
-	a := store.Anchor{
-		BlockID:     req.Anchor.BlockID,
-		EndBlockID:  req.Anchor.EndBlockID,
-		QuoteExact:  clipRunes(req.Anchor.QuoteExact, 512), // bound per-GET cascade cost + DOM bloat
-		QuoteTail:   clipRunes(req.Anchor.QuoteTail, 512),
-		QuotePrefix: clipRunes(req.Anchor.QuotePrefix, 64),
-		QuoteSuffix: clipRunes(req.Anchor.QuoteSuffix, 64),
-		CharStart:   req.Anchor.CharStart,
-		CharEnd:     req.Anchor.CharEnd,
+	var a store.Anchor
+	if req.Scope == store.ScopeDoc {
+		// a document-level note: no text anchor (never highlighted, never orphans)
+		a = store.Anchor{BlockID: store.DocBlockID}
+	} else {
+		if strings.TrimSpace(req.Anchor.QuoteExact) == "" {
+			writeError(w, http.StatusBadRequest, "anchor.quote_exact is required")
+			return
+		}
+		a = store.Anchor{
+			BlockID:     req.Anchor.BlockID,
+			EndBlockID:  req.Anchor.EndBlockID,
+			QuoteExact:  clipRunes(req.Anchor.QuoteExact, 512), // bound per-GET cascade cost + DOM bloat
+			QuoteTail:   clipRunes(req.Anchor.QuoteTail, 512),
+			QuotePrefix: clipRunes(req.Anchor.QuotePrefix, 64),
+			QuoteSuffix: clipRunes(req.Anchor.QuoteSuffix, 64),
+			CharStart:   req.Anchor.CharStart,
+			CharEnd:     req.Anchor.CharEnd,
+		}
 	}
 	th, err := s.st.CreateThread(r.Context(), slug, a, authorOr(req.Author, "human"), req.Body)
 	if err != nil {

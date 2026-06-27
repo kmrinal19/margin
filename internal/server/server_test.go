@@ -135,6 +135,48 @@ func TestAPICreateAndList(t *testing.T) {
 	}
 }
 
+func TestDocLevelComment(t *testing.T) {
+	ts, _, _ := newTestServer(t)
+
+	// scope=doc creates a note with no text anchor
+	code, data := reqJSON(t, "POST", ts.URL+"/api/comments/guide", map[string]any{
+		"scope": "doc", "body": "Overall: needs a security section.", "author": "human",
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("create doc note: %d: %s", code, data)
+	}
+	var th store.Thread
+	if err := json.Unmarshal(data, &th); err != nil {
+		t.Fatal(err)
+	}
+	if th.Anchor.BlockID != store.DocBlockID || !th.Anchor.IsDoc() {
+		t.Errorf("doc note anchor = %+v, want block_id=%q", th.Anchor, store.DocBlockID)
+	}
+	if th.Anchor.QuoteExact != "" {
+		t.Errorf("doc note should have no quote, got %q", th.Anchor.QuoteExact)
+	}
+
+	// it never orphans, even though it has no locatable span in the source
+	got := listThreads(t, ts, "all")
+	if len(got) != 1 {
+		t.Fatalf("want 1 thread, got %d", len(got))
+	}
+	if got[0].Orphaned {
+		t.Error("a document-level note must never orphan")
+	}
+	if !got[0].Anchor.IsDoc() {
+		t.Error("listed thread should still be doc-level")
+	}
+
+	// an anchored create still requires a quote
+	bad, _ := reqJSON(t, "POST", ts.URL+"/api/comments/guide", map[string]any{
+		"body": "no anchor", "author": "human",
+	})
+	if bad != http.StatusBadRequest {
+		t.Errorf("anchored create without a quote = %d, want 400", bad)
+	}
+}
+
 func TestValidSlugNested(t *testing.T) {
 	t.Parallel()
 	ok := []string{"welcome", "payments/refunds", "a/b/c", "auth/oauth-flow"}

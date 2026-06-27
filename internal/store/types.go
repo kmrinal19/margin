@@ -8,6 +8,14 @@ const (
 	StatusResolved = "resolved"
 )
 
+// DocBlockID is the reserved block id for a document-level note — a thread with
+// no text anchor. Real block ids are "b-<hash>", so "doc" can never collide.
+// ScopeDoc is the matching create-request scope value.
+const (
+	DocBlockID = "doc"
+	ScopeDoc   = "doc"
+)
+
 // Filter selects which threads ListThreads returns.
 type Filter string
 
@@ -36,6 +44,9 @@ type Anchor struct {
 
 // Multi reports whether the anchor spans more than one block.
 func (a Anchor) Multi() bool { return a.EndBlockID != "" && a.EndBlockID != a.BlockID }
+
+// IsDoc reports whether this is a document-level note (no text anchor).
+func (a Anchor) IsDoc() bool { return a.BlockID == DocBlockID }
 
 // Comment is one message within a thread.
 type Comment struct {

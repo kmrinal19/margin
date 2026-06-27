@@ -428,6 +428,18 @@ body.sidebar-modal{overflow:hidden;overscroll-behavior:contain;}
 .mg-pop{position:absolute;z-index:56;width:340px;max-width:calc(100vw - var(--s5)*2);max-height:calc(100dvh - var(--s5)*2);overflow-y:auto;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);box-shadow:var(--shadow-pop);opacity:0;transform:translateY(4px);transition:opacity .13s ease-out, transform .13s ease-out;}
 .mg-pop.show{opacity:1;transform:none;}
 .mg-pop .mg-quote{font-family:var(--serif);font-style:italic;color:var(--muted);}
+/* centered variant — the document-level note composer (not anchored to a selection) */
+.mg-pop.center{position:fixed;left:50%;top:16vh;transform:translate(-50%,4px);}
+.mg-pop.center.show{transform:translate(-50%,0);}
+/* "On this document" label, used in the composer and on doc-level cards */
+.mg-doclabel{font-family:var(--sans);font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;letter-spacing:var(--track-label);
+  color:var(--accent);padding:var(--s3) var(--s3) 0;display:flex;align-items:center;gap:.4em;}
+.mg-doclabel::before{content:"❡";font-size:1.05em;} /* a capitulum — "on the document as a whole" */
+/* sidebar group divider ("On the document" / "Anchored") */
+.mg-group{font-family:var(--sans);font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;letter-spacing:var(--track-label);
+  color:var(--faint);display:flex;align-items:center;gap:var(--s3);margin:var(--s2) 0 calc(var(--s2) * -1);}
+.mg-group::after{content:"";flex:1;height:1px;background:var(--border);}
+.mg-card.doc{border-left-color:var(--accent);} /* doc-level notes share the editor's-mark accent rail */
 
 .mg-scrim{position:fixed;inset:0;background:rgba(34,25,15,.32);opacity:0;pointer-events:none;transition:opacity .2s;z-index:44;}
 .mg-scrim.show{opacity:1;pointer-events:auto;}
@@ -504,6 +516,8 @@ body.sidebar-modal{overflow:hidden;overscroll-behavior:contain;}
 @media (max-width:560px){
   .site-header{padding:0 var(--s4);gap:var(--s3);}
   .site-header .crumb{display:none;}
+  /* collapse header buttons to their icons (the labels are the width hog) */
+  #mg-docnote .h-label,#mg-toggle .h-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
 }
 @media print{
   /* force the light palette regardless of the active theme (match data-theme specificity) */

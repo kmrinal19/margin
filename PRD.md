@@ -236,6 +236,8 @@ Notes: status lives on the **thread** (resolve is thread-level). Anchor offsets 
   "body": "…", "author": "human" }
 ```
 
+**Document-level notes.** A comment that isn't tied to a span — overall feedback. `POST /api/comments/{slug...}` with `{ "scope": "doc", "body": "…", "author": "human" }` (no anchor) creates a thread stored with the reserved `block_id="doc"` and an empty quote. Such a thread has **no in-body highlight or gutter marker**, is **skipped by the re-anchor cascade** (it can never orphan), and the widget pins it in an **"On the document"** group at the top of the sidebar. Started from a masthead **"＋ Note"** button or by pressing `c` with nothing selected. In the agent JSON it appears as `b:"doc"` (with an empty `q`), so the agent reads it as general feedback rather than a span to locate.
+
 ---
 
 ## 11. CLI surface

@@ -169,6 +169,8 @@
   var toggle = document.getElementById("mg-toggle");
   var openCountPill = document.getElementById("mg-open-count");
   if (toggle) toggle.addEventListener("click", toggleSidebar);
+  var docNoteBtn = document.getElementById("mg-docnote");
+  if (docNoteBtn) docNoteBtn.addEventListener("click", openDocComposer);
 
   // ── load + render ──────────────────────────────────────────────────
   function load() {
@@ -202,10 +204,13 @@
     if (c) { c.classList.remove("flash"); void c.offsetWidth; c.classList.add("flash"); }
   }
 
+  // a document-level note has the reserved "doc" block id and no text anchor
+  function isDocThread(t) { return t.anchor && t.anchor.block_id === "doc"; }
+
   function render() {
     clearHighlights();
     threads.forEach(function (t) {
-      if (!t.orphaned) paintHighlight(t);
+      if (!t.orphaned && !isDocThread(t)) paintHighlight(t);
     });
     layoutGutter();
     renderSidebar();
@@ -410,7 +415,7 @@
     // be painted (soft miss), its anchor block — so every counted comment gets a dot
     var rows = [];
     threads.forEach(function (t) {
-      if (t.orphaned) return;
+      if (t.orphaned || isDocThread(t)) return; // doc-level notes have no gutter marker
       var anchorEl = article.querySelector('mark.mg-hl[data-tid="' + t.id + '"]') || document.getElementById(t.anchor.block_id);
       if (!anchorEl) return;
       var top = anchorEl.getBoundingClientRect().top - arect.top;
@@ -484,7 +489,7 @@
   function openHelp() {
     if (helpEl) return;
     var SHORTCUTS = [
-      ["c", "Comment on the selection"],
+      ["c", "Comment on the selection (or the whole doc)"],
       ["j / k", "Next / previous comment"],
       ["Enter", "Jump to the active comment’s anchor"],
       ["r", "Reply to the active comment"],
@@ -529,34 +534,47 @@
       list.appendChild(emptyState());
       return;
     }
-    items.forEach(function (t) {
-      list.appendChild(card(t));
-    });
+    // pin document-level notes in their own "On the document" group at the top
+    var docs = [], anchored = [];
+    items.forEach(function (t) { (isDocThread(t) ? docs : anchored).push(t); });
+    if (docs.length) {
+      list.appendChild(el("div", { class: "mg-group", text: "On the document" }));
+      docs.forEach(function (t) { list.appendChild(card(t)); });
+      if (anchored.length) list.appendChild(el("div", { class: "mg-group", text: "Anchored" }));
+    }
+    anchored.forEach(function (t) { list.appendChild(card(t)); });
     sidebar.scrollTop = savedScroll;
   }
 
   function card(t) {
-    var tentative = !t.orphaned && t.anchor.confidence > 0 && t.anchor.confidence < 1;
+    var docLevel = isDocThread(t);
+    var tentative = !t.orphaned && !docLevel && t.anchor.confidence > 0 && t.anchor.confidence < 1;
     var c = el("div", {
-      class: "mg-card" + (t.orphaned ? " orphan" : "") + (tentative ? " tentative" : "") + (t.id === activeTid ? " active" : ""),
+      class: "mg-card" + (t.orphaned ? " orphan" : "") + (docLevel ? " doc" : "") + (tentative ? " tentative" : "") + (t.id === activeTid ? " active" : ""),
       "data-tid": String(t.id),
       id: "mg-thread-" + t.id,
       role: "comment",
-      "aria-label": "Comment thread on: " + t.anchor.quote_exact,
+      "aria-label": docLevel ? "Comment on the whole document" : "Comment thread on: " + t.anchor.quote_exact,
     });
-    // hovering a card "peeks" its in-body highlight + gutter marker (and vice-versa)
-    c.addEventListener("mouseenter", function () { peek(t.id, true); });
-    c.addEventListener("mouseleave", function () { peek(t.id, false); });
 
-    var qText = t.anchor.quote_exact;
-    if (t.anchor.end_block_id && t.anchor.end_block_id !== t.anchor.block_id && t.anchor.quote_tail) {
-      qText = t.anchor.quote_exact + " … " + t.anchor.quote_tail; // multi-block: head … tail
+    if (docLevel) {
+      // no quote snippet, no highlight/marker — just a label
+      c.appendChild(el("div", { class: "mg-doclabel", text: "On this document" }));
+    } else {
+      // hovering a card "peeks" its in-body highlight + gutter marker (and vice-versa)
+      c.addEventListener("mouseenter", function () { peek(t.id, true); });
+      c.addEventListener("mouseleave", function () { peek(t.id, false); });
+
+      var qText = t.anchor.quote_exact;
+      if (t.anchor.end_block_id && t.anchor.end_block_id !== t.anchor.block_id && t.anchor.quote_tail) {
+        qText = t.anchor.quote_exact + " … " + t.anchor.quote_tail; // multi-block: head … tail
+      }
+      var quote = el("div", { class: "mg-quote", role: "button", tabindex: "0", text: qText, title: "Jump to this passage" });
+      function jump() { activate(t.id, true, true); }
+      quote.addEventListener("click", jump);
+      quote.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); jump(); } });
+      c.appendChild(quote);
     }
-    var quote = el("div", { class: "mg-quote", role: "button", tabindex: "0", text: qText, title: "Jump to this passage" });
-    function jump() { activate(t.id, true, true); }
-    quote.addEventListener("click", jump);
-    quote.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); jump(); } });
-    c.appendChild(quote);
 
     if (tentative) {
       c.appendChild(el("div", { class: "mg-tentative", text: "The text moved — this anchor was relocated. Check it still fits." }));
@@ -581,7 +599,7 @@
     }
 
     // reply box: auto-grows, Enter (Shift+Enter = newline) sends; button disabled when empty
-    var input = el("textarea", { class: "mg-input mg-grow", rows: "1", placeholder: "Reply… (Enter to send)", "aria-label": "Reply to comment on: " + t.anchor.quote_exact });
+    var input = el("textarea", { class: "mg-input mg-grow", rows: "1", placeholder: "Reply… (Enter to send)", "aria-label": docLevel ? "Reply to the document note" : "Reply to comment on: " + t.anchor.quote_exact });
     input.value = drafts[t.id] || "";
     var send = el("button", {
       class: "mg-btn primary",
@@ -943,6 +961,47 @@
       }
     });
   }
+  // A centered composer for a document-level note (no text anchor). Opened from
+  // the masthead "＋ Note" button or by pressing c with nothing selected.
+  function openDocComposer() {
+    closeComposer();
+    hidePill();
+    lastFocus = document.activeElement;
+    var ta = el("textarea", { class: "mg-input", rows: "3", placeholder: "A note on the whole document…", "aria-label": "Note on this document" });
+    function submit() { var body = ta.value.trim(); if (body) createDocNote(body); }
+    var pop = el(
+      "div",
+      { class: "mg-pop center show", id: "mg-composer", role: "dialog", "aria-modal": "true", "aria-label": "Note on this document" },
+      el(
+        "div",
+        { class: "mg-reply" },
+        el("div", { class: "mg-doclabel", text: "On this document" }),
+        ta,
+        el(
+          "div",
+          { class: "mg-card-foot" },
+          spacer(),
+          el("button", { class: "mg-btn", type: "button", text: "Cancel", onclick: closeComposer }),
+          el("button", { class: "mg-btn primary", type: "button", text: "Add note", onclick: submit })
+        )
+      )
+    );
+    document.body.appendChild(pop);
+    ta.focus();
+    ta.addEventListener("keydown", function (e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submit();
+      else if (e.key === "Escape") closeComposer();
+    });
+    pop.addEventListener("keydown", function (e) {
+      if (e.key !== "Tab") return;
+      var f = pop.querySelectorAll("textarea, button");
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
+  }
+
   function closeComposer() {
     var p = document.getElementById("mg-composer");
     if (!p) return;
@@ -1020,6 +1079,22 @@
         pending = null;
         return r.json().then(function (created) {
           // select the new comment so it's emphasised and r/e target it
+          return loadThen().then(function () {
+            if (created && created.id) activate(created.id, true);
+            else { setFilter("open"); openSidebar(); }
+          });
+        });
+      })
+      .catch(function () { composerError("Couldn’t reach the server. Your text is kept — try again."); })
+      .then(function () { done("create"); });
+  }
+  function createDocNote(body) {
+    if (!busy("create")) return;
+    postJSON(apiDoc, { scope: "doc", body: body, author: "human" })
+      .then(function (r) {
+        if (!r.ok) { composerError("Couldn’t save (server " + r.status + "). Your text is kept — try again."); return; }
+        closeComposer();
+        return r.json().then(function (created) {
           return loadThen().then(function () {
             if (created && created.id) activate(created.id, true);
             else { setFilter("open"); openSidebar(); }
@@ -1157,6 +1232,8 @@
           pending = a;
           showPill();
           openComposer();
+        } else {
+          openDocComposer(); // nothing selected → a note on the whole document
         }
         break;
       }

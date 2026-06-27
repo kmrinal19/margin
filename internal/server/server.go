@@ -220,6 +220,9 @@ func (s *Server) resolveThreads(r *http.Request, slug string, filter store.Filte
 	var heals []store.HealRow
 	for i := range threads {
 		a := threads[i].Anchor
+		if a.IsDoc() {
+			continue // document-level note: no span to re-anchor, never orphans
+		}
 		newA, orphaned := reanchor(doc, a)
 
 		// Persist only on a genuine change — a no-op resolution never touches the
