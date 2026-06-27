@@ -40,12 +40,28 @@ func IsLoopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// threadStore is the slice of the store the server actually uses. Defining it in
+// the consumer (per go-conventions) keeps the dependency narrow and lets tests
+// wrap a real *store.Store to observe writes (e.g. the no-write-storm invariant).
+type threadStore interface {
+	CreateThread(ctx context.Context, slug string, a store.Anchor, author, body string) (store.Thread, error)
+	GetThread(ctx context.Context, id int64) (store.Thread, error)
+	ListThreads(ctx context.Context, slug string, filter store.Filter) ([]store.Thread, error)
+	AddReply(ctx context.Context, threadID int64, author, body string) (store.Comment, error)
+	SetStatus(ctx context.Context, threadID int64, status, by, note string) error
+	UpdateAnchorResolutions(ctx context.Context, rows []store.HealRow) error
+	Counts(ctx context.Context) (map[string]store.DocCounts, error)
+	OpenCounts(ctx context.Context) (map[string]int, error)
+}
+
+var _ threadStore = (*store.Store)(nil)
+
 // Server serves the doc index, rendered docs, embedded assets, and the REST API.
 type Server struct {
 	cfg      Config
 	log      *slog.Logger
 	rnd      *render.Renderer
-	st       *store.Store
+	st       threadStore
 	handler  http.Handler
 	etagSeed int64 // per-process; makes ETags refresh across restarts/rebuilds
 	docs     *docCache
@@ -56,7 +72,7 @@ var _ http.Handler = (*Server)(nil)
 
 // New constructs a Server and wires its routes. The renderer and store must be
 // non-nil.
-func New(cfg Config, log *slog.Logger, rnd *render.Renderer, st *store.Store) *Server {
+func New(cfg Config, log *slog.Logger, rnd *render.Renderer, st threadStore) *Server {
 	s := &Server{
 		cfg: cfg, log: log, rnd: rnd, st: st,
 		etagSeed: time.Now().UnixNano(),

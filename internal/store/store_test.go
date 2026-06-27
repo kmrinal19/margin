@@ -2,8 +2,10 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"testing"
 )
@@ -170,5 +172,55 @@ func TestConcurrentWrites(t *testing.T) {
 	}
 	if len(all) != writers {
 		t.Errorf("want %d threads, got %d", writers, len(all))
+	}
+}
+
+// TestMigrationAddsMultiBlockColumns fabricates a pre-multi-block database (an
+// anchor table WITHOUT end_block_id/quote_tail) and verifies Open's additive
+// migration brings it up to date so a multi-block anchor round-trips.
+func TestMigrationAddsMultiBlockColumns(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "margin.db")
+
+	// hand-build a legacy schema: the anchor table predates multi-block.
+	legacy, err := sql.Open("sqlite", "file:"+dbPath+"?"+dsnPragmas)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const legacyDDL = `
+CREATE TABLE doc (id INTEGER PRIMARY KEY, slug TEXT NOT NULL UNIQUE, title TEXT, last_rendered TEXT);
+CREATE TABLE comment_thread (id INTEGER PRIMARY KEY, doc_id INTEGER NOT NULL REFERENCES doc(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'open', orphaned INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
+  resolved_at TEXT, resolved_by TEXT);
+CREATE TABLE anchor (thread_id INTEGER PRIMARY KEY REFERENCES comment_thread(id) ON DELETE CASCADE,
+  block_id TEXT NOT NULL, quote_exact TEXT NOT NULL, quote_prefix TEXT, quote_suffix TEXT,
+  char_start INTEGER, char_end INTEGER, last_confidence REAL);
+CREATE TABLE comment (id INTEGER PRIMARY KEY, thread_id INTEGER NOT NULL REFERENCES comment_thread(id) ON DELETE CASCADE,
+  author TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL);`
+	if _, err := legacy.ExecContext(context.Background(), legacyDDL); err != nil {
+		t.Fatalf("legacy DDL: %v", err)
+	}
+	_ = legacy.Close()
+
+	// Open must migrate (add end_block_id + quote_tail) without error.
+	s, err := Open(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("Open on legacy db: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	// a multi-block anchor must now persist and round-trip through the new columns.
+	th, err := s.CreateThread(context.Background(), "d", Anchor{
+		BlockID: "b-head", EndBlockID: "b-tail", QuoteExact: "head part", QuoteTail: "tail part",
+	}, "human", "spans two blocks")
+	if err != nil {
+		t.Fatalf("CreateThread after migration: %v", err)
+	}
+	got, err := s.GetThread(context.Background(), th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Anchor.EndBlockID != "b-tail" || got.Anchor.QuoteTail != "tail part" {
+		t.Errorf("multi-block columns did not round-trip: %+v", got.Anchor)
 	}
 }
